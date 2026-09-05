@@ -33,6 +33,7 @@ from kortravelmap.dto import SourceLink, SourceRecord, SourceRole
 from kortravelmap.dto._time import kst_now
 from kortravelmap.dto.price import PriceValue
 from kortravelmap.dto.weather import WeatherValue
+from kortravelmap.api.domain_command_registry import command_policy
 from kortravelmap.infra import feature_repo, price_repo, weather_repo
 from kortravelmap.infra.db import make_async_engine
 from kortravelmap.infra.feature_identity import candidate_feature_uuid
@@ -204,8 +205,26 @@ _EXPECTED_OVERRIDE_FIELD_PATHS: Final[frozenset[str]] = (
     _ADMIN_CREATE_OVERRIDE_FIELD_PATHS | {_ADMIN_RETIRE_OVERRIDE_FIELD_PATH}
 )
 #: live spec이 실행하는 mutation 명령. GET은 domain command를 만들지 않는다.
-_ADMIN_CREATE_OPERATION: Final[str] = "admin.feature.create"
-_ADMIN_STATE_OPERATION: Final[str] = "admin.feature.state"
+#:
+#: 이름과 성공 status를 **손으로 적지 않는다** — `domain_command_registry`가 정본이고
+#: 라우트가 `@idempotent_domain_command`로 그 이름을 쓴다. 종전에는 여기에
+#: `"admin.feature.create"`라고 적혀 있었으나 레지스트리의 실제 이름은
+#: `"admin.feature.create.manual-v1"`이라 audit이 모든 create receipt를 소유권 위반으로
+#: 거절했고, 성공 status도 200으로 굳어 있어 201을 내는 create를 거절했다. 이 lane이
+#: `api-audit`/`purge`를 아직 부르지 않아 잠복해 있었을 뿐이다
+#: (2026-09-06 적대 리뷰 적발).
+_ADMIN_CREATE_POLICY: Final = command_policy("POST", "/v1/admin/features")
+_ADMIN_STATE_POLICY: Final = command_policy(
+    "PATCH", "/v1/admin/features/{feature_id}/state"
+)
+_ADMIN_CREATE_OPERATION: Final[str] = _ADMIN_CREATE_POLICY.operation or ""
+_ADMIN_STATE_OPERATION: Final[str] = _ADMIN_STATE_POLICY.operation or ""
+#: domain ledger 정책은 `success_status`를 반드시 선언한다(미선언이면 registry가
+#: 생성 시점에 거절한다). `or 200`은 타입 좁히기용이며 실행 경로가 아니다.
+_ADMIN_EXPECTED_STATUS: Final[dict[str, int]] = {
+    _ADMIN_CREATE_OPERATION: _ADMIN_CREATE_POLICY.success_status or 200,
+    _ADMIN_STATE_OPERATION: _ADMIN_STATE_POLICY.success_status or 200,
+}
 
 
 def _admin_fixture_name(run_id: str) -> str:
@@ -1311,8 +1330,10 @@ async def _inspect_api_owned(
         subject = str(command["subject_feature_uuid"])
         if (
             command["actor"] != _ADMIN_OPERATOR
-            or operation not in {_ADMIN_CREATE_OPERATION, _ADMIN_STATE_OPERATION}
-            or command["response_status"] != 200
+            or operation not in _ADMIN_EXPECTED_STATUS
+            # 성공 status는 operation마다 다르다 — create는 201, state는 200이다.
+            # 200으로 굳히면 create receipt를 소유권 위반으로 거절한다.
+            or command["response_status"] != _ADMIN_EXPECTED_STATUS[operation]
             or subject not in uuid_to_feature_id
         ):
             raise RuntimeError("API-owned domain command receipt 소유권이 다릅니다")

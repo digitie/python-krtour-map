@@ -412,6 +412,42 @@ attestation v4와 pinned runtime manifest v6 + rebuild journal v8을 그대로 �
   data-dependent 계약을 각각 소유한다.
 ```
 
+## T-VN-D2-API-AUDIT
+
+```markdown
+- [ ] T-VN-D2-API-AUDIT — D2 fixture helper의 `api-audit`/`purge` 경로를 실행 가능하게 만든다
+```
+
+**왜 여는가.** `run-admin-feature-live-acceptance.sh`는 `run_helper`를 `seed`·`cleanup`·
+`audit`으로만 부른다. `api-audit`과 `purge`는 helper에 구현돼 있으나 **한 번도 실행된 적이
+없고**, 그래서 그 안의 계약이 검증된 적이 없다. 2026-09-06 적대 리뷰가 셋을 찾았고 둘은
+고쳤다(operation 이름·성공 status를 `domain_command_registry`에서 유도). 남은 하나가 이
+항목이다.
+
+**남은 결함.** `_admin_fixture_feature_id`가 `{name}:{lon:.6f},{lat:.6f}`를 자연키로
+`feature_id`를 재계산한다. M01 이후 서버는 `manual::{feature_uuid}`를 쓰고 그 uuid는
+서버가 발급하는 **랜덤 UUIDv7**이라, run_id만으로는 원리적으로 재계산할 수 없다. 따라서
+`_inspect_api_owned`의 `feature_id != expected_feature_id` 대조와
+`_audit_complete_api_owned`의 `feature_ids != (feature_id,)`는 항상 실패한다.
+
+**왜 D2와 분리하는가.** 같은 함수를 clone 러너의 content digest 계약이 함께 쓴다 —
+`scripts/run-admin-feature-clone-live-acceptance.sh`가 셸 안에서 같은 규칙을 재현하고
+`tests/unit/test_admin_feature_live_acceptance.py`가 두 파생의 일치를 단언한다. 즉 이
+수정은 두 lane의 계약을 함께 판단해야 하고, D2 완주 경로에는 필요하지 않다.
+
+**해제 조건.**
+
+1. `_admin_fixture_feature_id`가 **행의 `feature_uuid`로** 서버 규칙을 재현한다
+   (`category="manual_feature_v1"`, `source_natural_key=f"manual::{uuid}"`). 재계산이
+   아니라 재현이므로 랜덤 uuid에도 성립하고, router 규칙이 바뀌면 여전히 실패한다.
+2. clone 러너의 content digest가 같은 규칙으로 옮겨지거나, D2와 clone이 서로 다른 규칙을
+   쓴다는 사실이 두 곳에 명시된다. 어느 쪽이든 `tests/unit/test_admin_feature_live_acceptance.py`의
+   두 파생 일치 단언이 실제를 반영해야 한다.
+3. 러너가 `api-audit`을 실제로 부르고, 그 실행이 배포 스택에서 통과한다. 부르지 않으면
+   1·2가 다시 잠복한다 — **이 항목의 요지가 그것이다.**
+4. 변이 검증: operation 이름·성공 status·feature_id 규칙을 각각 되돌리면 게이트가 red가
+   된다.
+
 ## T-VN-PAIR-V2
 
 ```markdown
