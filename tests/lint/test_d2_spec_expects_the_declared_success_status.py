@@ -99,10 +99,14 @@ def test_the_spec_expects_the_declared_create_status() -> None:
     anchor = spec.index('"create typed Feature",')
     tail = spec[anchor : anchor + 200]
     supplied = re.search(r'"create typed Feature",\s*\n\s*(?P<status>\d{3}),', tail)
-    assert supplied is not None and int(supplied.group("status")) == expected, (
-        f"스펙의 create 호출이 {expected}를 기대하지 않는다. `requireBody`의 기본값은 "
-        "200이라 201로 성공한 요청을 **실패로 읽는다** — 배포 스택 실행 도중에 알게 "
-        f"두지 마라. 발견={supplied.group('status') if supplied else '(미지정)'}"
+    assert supplied is not None, (
+        f"스펙의 create 호출이 기대 status를 명시하지 않는다. `requireBody`의 기본값은 "
+        f"200이라 {expected}로 성공한 요청을 **실패로 읽는다** — 배포 스택 실행 도중에 "
+        "알게 두지 마라."
+    )
+    assert int(supplied.group("status")) == expected, (
+        f"스펙의 create 호출이 {expected} 대신 {supplied.group('status')}를 기대한다. "
+        "route가 선언한 성공 status와 어긋나면 성공을 실패로 읽는다."
     )
 
 
