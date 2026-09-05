@@ -45,7 +45,13 @@ def test_the_helper_derives_the_operation_names_from_the_registry() -> None:
         "모든 receipt를 소유권 위반으로 거절한다."
     )
     for method, path in (_CREATE_ROUTE, _STATE_ROUTE):
-        assert f'command_policy("{method}", "{path}")' in source, (
+        # 호출이 줄바꿈될 수 있으므로 공백에 관대해야 한다 — 그렇지 않으면 게이트가
+        # 서식 때문에 red가 되고, 그 red는 계약과 무관하다.
+        call = re.compile(
+            r"command_policy\(\s*" + re.escape(f'"{method}"') + r",\s*"
+            + re.escape(f'"{path}"') + r"\s*,?\s*\)"
+        )
+        assert call.search(source) is not None, (
             f"helper가 {method} {path}의 정책을 유도하지 않는다"
         )
     literal = re.search(
