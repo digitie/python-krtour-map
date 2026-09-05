@@ -370,9 +370,11 @@ class Supervisor:
         # 배포 스택에서 `docker create`를 손으로 재현해야 했다(2026-09-05에 세 번,
         # 매번 다른 틀린 오류를 얻었다). stderr는 JSON 계약을 깨지 않도록 형제
         # 파일에 남긴다 — probe/executor 경로는 이미 두 스트림을 함께 읽는다.
+        # **항상** 쓴다(비어 있어도). evidence 검증이 runtime 디렉터리의 exact
+        # 파일 집합을 요구하므로, 조건부로 쓰면 stderr 유무에 따라 집합이 흔들려
+        # 성공한 run이 `evidence exact file set mismatch`로 죽는다.
         _write_root_only_file(self.args.output, log.stdout)
-        if log.stderr:
-            _write_root_only_file(f"{self.args.output}.stderr", log.stderr)
+        _write_root_only_file(f"{self.args.output}.stderr", log.stderr)
         self.remove("helper")
         return status
 
@@ -454,11 +456,16 @@ class Supervisor:
         # `docker create` 인자를 손으로 재현해야 했고 그것이 이 lane의 반복 단가였다
         # (2026-09-05). 제거 **전에** 두 스트림을 evidence로 옮긴다.
         log = _run(["docker", "logs", "--", self.container_id], capture=True)
-        if log.returncode == 0:
-            _write_root_only_file(
-                os.path.join(self.args.artifact_dir, "executor.log"),
-                log.stdout + log.stderr,
-            )
+        # **항상** 쓴다. `_REPORT_NAMES`가 artifact 디렉터리의 exact 파일 집합을
+        # 요구하므로 조건부로 쓰면 성공한 run이 `redacted report exact file set
+        # mismatch`로 죽는다. 포획 자체가 실패하면 그 사실을 파일에 적는다 —
+        # 파일이 없어서 계약이 깨지는 것보다 낫다.
+        _write_root_only_file(
+            os.path.join(self.args.artifact_dir, "executor.log"),
+            log.stdout + log.stderr
+            if log.returncode == 0
+            else b"docker logs capture failed\n",
+        )
         self.remove("executor")
         return status
 

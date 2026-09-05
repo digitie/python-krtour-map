@@ -128,8 +128,18 @@ async function browserFetch<T>(
   return result as FetchResult<T>;
 }
 
-function requireBody<T>(result: FetchResult<T>, label: string): T {
-  if (result.status !== 200 || result.body === null) {
+/**
+ * 성공 status는 route마다 다르다 — 기본은 200이지만 manual Feature 생성은
+ * `status_code=status.HTTP_201_CREATED`다. 종전에는 200만 성공으로 봐서
+ * **201로 성공한 create를 실패로 읽었다**(2026-09-05 실측:
+ * `create typed Feature 실패: HTTP 201`). 기대 status를 호출자가 준다.
+ */
+function requireBody<T>(
+  result: FetchResult<T>,
+  label: string,
+  expectedStatus = 200,
+): T {
+  if (result.status !== expectedStatus || result.body === null) {
     throw new Error(`${label} 실패: HTTP ${result.status} (response redacted)`);
   }
   return result.body;
@@ -236,22 +246,26 @@ test("@admin-feature-live-acceptance TVN36 direct state cutover", async ({
         page,
         "/v1/admin/features",
         {
+          // state 3축을 **보내지 않는다.** `AdminFeatureCreateRequest`에 그 필드가
+          // 없고(`extra="forbid"`), 초기 tuple은 DB wrapper
+          // `create_admin_manual_feature_with_initial_state`가 정한다. 종전에는
+          // 셋을 보내 422로 죽었고, D2가 여기까지 온 적이 없어 아무도 몰랐다
+          // (2026-09-05 실측: 셋 포함 → 422 fields=[lifecycle_state,
+          // publication_state, quality_state], 제거 → 201).
           body: {
             category: "01070300",
             coord: { lat: LAT, lon: LON },
             kind: "place",
-            lifecycle_state: "active",
             marker_color: "P-02",
             marker_icon: "marker",
             name: FIXTURE_NAME,
-            publication_state: "published",
-            quality_state: "valid",
             reason: `${REASON}:create`,
           },
           method: "POST",
         },
       ),
       "create typed Feature",
+      201,
     );
     const featureId = created.data.feature_id;
 
