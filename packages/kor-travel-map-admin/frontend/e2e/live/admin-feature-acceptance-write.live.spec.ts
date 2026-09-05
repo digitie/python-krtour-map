@@ -128,8 +128,18 @@ async function browserFetch<T>(
   return result as FetchResult<T>;
 }
 
-function requireBody<T>(result: FetchResult<T>, label: string): T {
-  if (result.status !== 200 || result.body === null) {
+/**
+ * 성공 status는 route마다 다르다 — 기본은 200이지만 manual Feature 생성은
+ * `status_code=status.HTTP_201_CREATED`다. 종전에는 200만 성공으로 봐서
+ * **201로 성공한 create를 실패로 읽었다**(2026-09-05 실측:
+ * `create typed Feature 실패: HTTP 201`). 기대 status를 호출자가 준다.
+ */
+function requireBody<T>(
+  result: FetchResult<T>,
+  label: string,
+  expectedStatus = 200,
+): T {
+  if (result.status !== expectedStatus || result.body === null) {
     throw new Error(`${label} 실패: HTTP ${result.status} (response redacted)`);
   }
   return result.body;
@@ -255,6 +265,7 @@ test("@admin-feature-live-acceptance TVN36 direct state cutover", async ({
         },
       ),
       "create typed Feature",
+      201,
     );
     const featureId = created.data.feature_id;
 
