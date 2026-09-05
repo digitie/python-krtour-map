@@ -21,7 +21,6 @@ import re
 from pathlib import Path
 
 import pytest
-
 from kortravelmap.api.domain_command_registry import command_policy
 
 pytestmark = pytest.mark.unit
