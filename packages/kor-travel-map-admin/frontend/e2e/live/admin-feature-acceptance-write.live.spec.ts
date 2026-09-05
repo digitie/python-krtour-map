@@ -236,16 +236,19 @@ test("@admin-feature-live-acceptance TVN36 direct state cutover", async ({
         page,
         "/v1/admin/features",
         {
+          // state 3축을 **보내지 않는다.** `AdminFeatureCreateRequest`에 그 필드가
+          // 없고(`extra="forbid"`), 초기 tuple은 DB wrapper
+          // `create_admin_manual_feature_with_initial_state`가 정한다. 종전에는
+          // 셋을 보내 422로 죽었고, D2가 여기까지 온 적이 없어 아무도 몰랐다
+          // (2026-09-05 실측: 셋 포함 → 422 fields=[lifecycle_state,
+          // publication_state, quality_state], 제거 → 201).
           body: {
             category: "01070300",
             coord: { lat: LAT, lon: LON },
             kind: "place",
-            lifecycle_state: "active",
             marker_color: "P-02",
             marker_icon: "marker",
             name: FIXTURE_NAME,
-            publication_state: "published",
-            quality_state: "valid",
             reason: `${REASON}:create`,
           },
           method: "POST",
