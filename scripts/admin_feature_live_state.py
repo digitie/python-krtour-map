@@ -22,11 +22,22 @@ _PHASE_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9_-]{1,63}$")
 _TOKEN_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9-]{1,63}$")
 _C7_MODULE_RELATIVE: Final[str] = "scripts/lib/c7_prod_attestation.py"
 _C7_BASE: Final[Path] = Path("/usr/local/lib/kor-travel-map/c7-runner")
+#: executor artifact 디렉터리의 **정확한** 파일 집합.
+#:
+#: `executor.log`는 supervisor가 컨테이너 제거 **전에** 두 스트림을 옮겨 담는
+#: 파일이다(2026-09-05). 종전에는 executor가 출력을 한 줄도 남기지 않아 실패 시
+#: 빈 디렉터리와 exit code만 남았고, 원인을 알려면 배포 스택에서 컨테이너를 손으로
+#: 재현해야 했다. 진단은 곁다리가 아니라 **증거**이므로 계약에 넣는다 — 그리고
+#: 조건부로 쓰면 exact 집합이 흔들리므로 supervisor가 **항상** 쓴다.
 _REPORT_NAMES: Final[set[str]] = {
     "c7-results.xml",
     "c7-summary.html",
     "c7-summary.json",
+    "executor.log",
 }
+
+#: helper 컨테이너의 stderr sibling. 같은 이유로 항상 쓰이고 계약에 포함된다.
+_HELPER_STDERR_SUFFIX: Final[str] = ".stderr"
 _REPORT_SPECS: Final[set[str]] = {
     "admin-feature-acceptance-write.live.spec.ts",
     "auth.setup.ts",
@@ -733,17 +744,28 @@ def _validate_evidence(args: argparse.Namespace) -> None:
         expected_names = {
             "cursor-probe.json",
             "direct-audit.json",
+            "direct-audit.json" + _HELPER_STDERR_SUFFIX,
             "direct-cleanup.json",
+            "direct-cleanup.json" + _HELPER_STDERR_SUFFIX,
             "direct-seed.json",
+            "direct-seed.json" + _HELPER_STDERR_SUFFIX,
             "lifecycle",
             "playwright-main",
             "playwright-recovery",
         }
+        # seed가 남기는 FK reference는 **8**이다. helper의
+        # `_assert_owned_state`가 present 2건에 대해 그렇게 만든다:
+        #   feature_aliases 2 + source_links 2
+        #   + weather_values 1 + current_weather_summary 1
+        #   + price_values 1 + current_price_summary 1
+        # 종전 값 2는 alias·source_link·summary가 들어오기 전의 숫자였고,
+        # clone lane은 2026-08-08에 6으로 고쳤으나 이 lane은 갱신되지 않았다.
+        # D2가 통과한 적이 없어 드러나지 않았다(2026-09-06 실측: 8).
         _validate_direct(
             runtime / "direct-seed.json",
             "seed",
             {"features": 2, "price_values": 1, "weather_values": 1},
-            2,
+            8,
         )
         required_operations = {
             "executor-main",
@@ -765,7 +787,9 @@ def _validate_evidence(args: argparse.Namespace) -> None:
     else:
         expected_names = {
             "direct-audit.json",
+            "direct-audit.json" + _HELPER_STDERR_SUFFIX,
             "direct-cleanup.json",
+            "direct-cleanup.json" + _HELPER_STDERR_SUFFIX,
             "lifecycle",
             "playwright-recovery",
         }

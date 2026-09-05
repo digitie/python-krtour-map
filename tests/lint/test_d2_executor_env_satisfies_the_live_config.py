@@ -113,15 +113,69 @@ def test_the_gate_reads_both_sides() -> None:
     assert "--env" in _executor_source(), "supervisor의 executor env 목록을 찾지 못했다"
 
 
-def test_executor_declares_every_env_the_guard_requires() -> None:
-    """가드가 요구하는 격리 선언을 executor가 전부 넘겨야 한다."""
+#: `"--env",\n    "NAME=VALUE",` 또는 `"--env",\n    "NAME",`(호스트 env 전달)
+_ENV_ARGUMENT = re.compile(
+    r'"--env",\s*\n?\s*(?:f")?"?(?P<name>E2E_[A-Z0-9_]+)(?:=(?P<value>[^"]*))?"'
+)
 
-    executor = _executor_source()
-    missing = sorted(env for env in _required_envs() if env not in executor)
+
+def _executor_env_arguments() -> dict[str, str | None]:
+    """executor가 실제로 `--env`로 넘기는 이름 → 값(전달만이면 None).
+
+    단순 부분문자열로 보면 안 된다 — 주석에 이름이 적혀 있거나 `=0`으로 바뀌어도
+    통과한다. 실제로 2026-09-06 적대 리뷰가 두 변이(`=1`을 `=0`으로, `--env` 쌍을
+    지우고 주석만 남기기)를 **green으로 측정**했다.
+    """
+
+    arguments: dict[str, str | None] = {}
+    for match in _ENV_ARGUMENT.finditer(_executor_source()):
+        arguments[match.group("name")] = match.group("value")
+    return arguments
+
+
+def _guard_required_values() -> dict[str, str]:
+    """가드가 값까지 비교하는 env → 요구 값."""
+
+    body = _guard_body()
+    constants = _env_constants()
+    required: dict[str, str] = {}
+    for match in re.finditer(
+        r"process\.env\[(?P<const>[A-Z][A-Z0-9_]*)\]\s*!==\s*\"(?P<value>[^\"]+)\"", body
+    ):
+        name = constants.get(match.group("const"))
+        if name is not None:
+            required[name] = match.group("value")
+    return required
+
+
+def test_executor_declares_every_env_the_guard_requires() -> None:
+    """가드가 요구하는 격리 선언을 executor가 **`--env` 인자로** 넘겨야 한다."""
+
+    passed = _executor_env_arguments()
+    missing = sorted(env for env in _required_envs() if env not in passed)
     assert missing == [], (
-        f"live config의 acceptance 가드가 요구하는 env를 executor가 넘기지 않는다: {missing}. "
-        "넘기지 않으면 Playwright가 **config 평가에서** 죽고, 남는 증거는 exit code뿐이다. "
-        "선언이 사실이 아니라면 config 쪽 요구를 다시 판단하라 — 거짓 선언으로 통과시키지 마라."
+        f"live config의 acceptance 가드가 요구하는 env를 executor가 `--env`로 넘기지 "
+        f"않는다: {missing}. 넘기지 않으면 Playwright가 **config 평가에서** 죽고, "
+        "선언이 사실이 아니라면 config 쪽 요구를 다시 판단하라 — 거짓 선언으로 "
+        "통과시키지 마라. (주석에 이름만 적는 것은 넘긴 것이 아니다.)"
+    )
+
+
+def test_executor_passes_the_value_the_guard_compares() -> None:
+    """가드가 값을 비교하면 executor가 **그 값**을 넘겨야 한다.
+
+    이름만 보면 `=1`을 `=0`으로 바꿔도 통과한다 — 적대 리뷰가 실측했다.
+    """
+
+    passed = _executor_env_arguments()
+    wrong = {
+        name: passed.get(name)
+        for name, want in _guard_required_values().items()
+        if name in passed and passed[name] != want
+    }
+    assert wrong == {}, (
+        f"executor가 가드의 비교값과 다른 값을 넘긴다: {wrong}. 가드는 값을 비교하므로 "
+        "이름만 맞추면 config 평가에서 죽는다."
     )
 
 
