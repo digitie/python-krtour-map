@@ -61,16 +61,20 @@ WITNESS_RELATIONS = (
 
 #: 거부돼야 하므로 body가 유효할 필요는 없지만, **자격 때문에** 거부됐음을 보이려면
 #: body 검증(422)보다 자격 검증(403)이 먼저 도는 것을 확인해야 한다. 그래서 유효한
-#: 모양을 보낸다.
+#: 모양을 보낸다 — `AdminFeatureCreateRequest`에 있는 필드만.
+#:
+#: state 3축(`lifecycle_state`·`publication_state`·`quality_state`)은 **넣지 않는다.**
+#: 모델에 없고 base가 `extra="forbid"`라 422가 되며, 그러면 이 게이트가 "자격 때문에
+#: 거부됐다"고 말할 근거를 잃는다. 초판이 정확히 그 셋을 담고 있었다(2026-09-06 적대
+#: 리뷰 적발) — D2 스펙이 같은 이유로 죽은 바로 그 결함이다.
 CREATE_BODY = {
     "category": "01070300",
     "coord": {"lat": 36.5, "lon": 127.5},
     "kind": "place",
-    "lifecycle_state": "active",
     "marker_color": "P-02",
     "marker_icon": "marker",
     "name": "M01 activation live gate — must be rejected",
-    "publication_state": "suppressed",
+    "reason": "m01-activation-live-gate:rejection-probe",
 }
 
 
