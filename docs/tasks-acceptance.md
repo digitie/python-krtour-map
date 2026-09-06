@@ -507,6 +507,50 @@ baseline에서는 돌 수 없다** — `docs/runbooks/c7-prod-live-e2e.md`가 �
 
 ## T-VN-PAIR-V2
 
+**2026-09-07 실측 — 종전 서술의 과소·과대 계상을 함께 정정한다.** 네 축을 병렬 조사하고
+48건을 반증에 부쳐 27건이 정정됐다. 아래는 반증을 통과했거나 정정된 것만 적는다.
+
+**과소 계상 — 소비자는 하나가 아니라 셋이다.**
+
+| 소비자 | 지점 | 성질 |
+|---|---|---|
+| `apps/api/app/core/config.py` | `_load_m05_pair_provenance` 봉투 단언, **모듈 스코프에서 호출** | v2를 먹이면 `import app.core.config`가 `RuntimeError`로 죽는다 — 요청 오류가 아니라 **컨테이너 기동 실패**(실측 재현) |
+| `scripts/m05_activation_attestation.py` | 같은 봉투 단언 복사본 | `AttestationError` |
+| `scripts/m05_activation_receipt.py` | 같은 봉투 단언 복사본 | `ReceiptError` |
+
+config.py는 봉투 검사 한 줄로 끝나지 않는다 — `source_revision`이 반환 튜플과 6개 모듈
+상수로 흘러가고, 그 상수가 활성화 receipt 대조(`:1792-1795`)와 Map image digest
+대조(`:1853-1861`)에 쓰인다. 편집 규모는 **약 50~70줄, 지점 6~7개**다.
+
+**과대 계상이었던 것 — 조사 1차에서 "최대 blocker"로 지목했으나 반증됐다.**
+
+- 서명된 활성화 receipt는 blocker가 **아니다**. TTL 상한 7일·기본 24시간으로 만료가 하드
+  강제되고 매 활성화마다 새로 서명되므로 보존할 장기 receipt가 없다.
+- 되돌리기 위험도 v2가 만드는 것이 아니다. stale `source_revision`이 Manager preflight에
+  거부되는 성질은 **v1에서 이미 상시적**이고, 지워지는 두 값은 커밋된 계약 파일과 그
+  15개 커밋 이력에 평문으로 남아 있어 n150 root 전용 상태가 아니다.
+- Map 원장이 비용을 기록하지 않는다는 것도 사실이 아니다. 기록은 있고(resume.md·tasks.md·
+  journal.md 여러 곳) 부족한 것은 **건별 회계**다.
+
+**실제로 남는 안전 공백 하나.** Manager의 **v2 회전 preflight는 아무 대조도 없이 통과**
+시킨다(`m05_isolated_e2e.py:2165-2172`). 그래서 "v2 계약 + v1-only 소비자" 조합을 회전
+전에 잡지 못하고, 그 조합은 컨테이너 기동 실패다. §5/§7의 Manager 작업에서 이것을 함께
+닫아야 한다 — 회전 시점에 target revision의 Map blob digest를 계약과 대조하면 된다.
+
+**비용(왜 하는가).** 2026-09-01 이후 Map 변경으로 강제된 재핀 **12건**, **12건 전부
+rebuild 동반**. 그중 **10건은 상류 admin OpenAPI가 바이트 동일**한 채 revision 라벨만
+옮겼다(상류 blob sha256이 12개 핀에 걸쳐 두 값뿐). v2는 그 두 필드를 계약에서 걷어내므로
+그 10건의 계약 diff가 사라진다.
+
+**선행은 끝나 있다.** Manager dual-read는 구현·배포 완료(n150 `/opt/.../m05_isolated_e2e.py`
+확인)이고 v2 happy-path 테스트도 있다. 생성기의 되돌림은 커밋된 JSON이 v2가 되는 순간
+자기 무장해제하므로 **생성기 변경은 순서상 마지막**이다.
+
+**해제 조건 7항의 소유자 배분** — 소비자 3(§1 dual-read+사용처 열거, §2 v1 계약 그대로
+기동, §4 v2 게이트+양방향 변이) · 생성기 1(§3 `--write` v2 재생성) · Manager 3(§5 preflight
+실측, §6 회전→rebuild→격리 e2e, §7 v1 분기 제거).
+
+
 ```markdown
 - [ ] T-VN-PAIR-V2 — PinVi M05 pair 계약 v2 이행
 ```
