@@ -550,7 +550,14 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--image", required=True)
     parser.add_argument("--api-container", default="")
     parser.add_argument("--fixture", type=Path)
-    parser.add_argument("--helper-action", choices=("seed", "cleanup", "audit"))
+    # 러너가 부르는 helper action 전부여야 한다. 하나라도 빠지면 argparse가 exit 2로
+    # 죽는데, 그것은 lifecycle도 출력 파일도 **쓰기 전**이라 lane에 아무 흔적이 남지
+    # 않는다 — 2026-09-06에 `api-audit`이 정확히 그랬고, 배포 스택 실행 한 번을
+    # 통째로 치르고서야 알았다. `tests/lint/test_supervisor_accepts_every_helper_action.py`가
+    # 러너 호출부에서 유도해 대조한다.
+    parser.add_argument(
+        "--helper-action", choices=("seed", "cleanup", "audit", "api-audit")
+    )
     parser.add_argument("--output", type=Path)
     parser.add_argument("--artifact-dir", type=Path)
     parser.add_argument("--recovery-only", action="store_true")
