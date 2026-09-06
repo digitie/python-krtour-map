@@ -16,6 +16,15 @@
 
 ### 다음 한 작업
 
+**`T-VN-PAIR-V2` §3의 선행 — attestation의 Map revision 생산자 배선.** §1·§2는
+2026-09-07에 닫혔다(PinVi #538, pinset `78cad481…`에서 배포 컨테이너로 실증). §3은
+해제 조건이 적지 않은 선행 하나에 걸려 있다: `m05_activation_attestation.py`가
+`source_revision`을 `git show`의 revision 인자로 쓰므로, 계약에서 그 필드를 빼려면 그
+값을 줄 생산자가 먼저 있어야 한다. **대체 생산자는 이미 존재한다** — 격리 envelope의
+`map.source_revision`(Manager가 pin registry에서 만든 값)이고, 배선만 없다.
+자세한 순서는 `docs/tasks-acceptance.md` §T-VN-PAIR-V2의 "진행 상황"이 갖는다.
+
+<!-- 아래는 이 항목을 고른 근거다 -->
 **`T-VN-PAIR-V2`** — PinVi의 M05 pair 계약을 v2로 올려 **Map revision의 이중 선언을
 없앤다.** 41C는 2026-09-07 소유자 판정으로 **보류**다(실 production 전환까지 enable 유예 —
 현 lifecycle에서 enable과 pinned rebuild가 상호배타라 rebuild 능력을 잃는 값이 맞지 않다).
