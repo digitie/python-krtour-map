@@ -10,6 +10,52 @@
 > | 2026-07-27 ~ 2026-07-31 | [archive/tasks-done-2026-07a.md](archive/tasks-done-2026-07a.md) |
 > | ~ 2026-07-26 (C7·Admin) | [archive/tasks-done-2026-07b.md](archive/tasks-done-2026-07b.md) |
 
+## T-VN-D2-API-AUDIT — helper의 api-audit 경로 활성화 (2026-09-06 완료)
+
+- [x] T-VN-D2-API-AUDIT — 러너가 `api-audit`을 실제로 부르고 배포 스택에서 통과했다
+  (`ktdm-d2-008`, pinset Map `631f1abc` + PinVi `b9637375`, `phase: passed`, runner exit 0).
+
+  **고친 결함.** `_admin_fixture_feature_id`가 `{name}:{lon:.6f},{lat:.6f}`를 자연키로
+  `feature_id`를 **재계산**했다. M01 뒤로 서버는 `manual::{feature_uuid}`를 쓰고 그 uuid는
+  서버 발급 랜덤 UUIDv7이라 밖에서 재계산할 수 없다 — 그 대조는 **항상 실패**했고, lane이
+  `api-audit`을 한 번도 부르지 않아 잠복해 있었다. 이제 관측된 행의 uuid로 서버 규칙을
+  **재현**한다.
+
+  **배포 DB 실측으로 세 번 확인**했다(서로 다른 실행이 만든 Feature):
+
+    | uuid | 실제 feature_id | 새 규칙 |
+    |---|---|---|
+    | `01a07464-b352-…` | `f_global_p_fb718cf7406d30e8` | MATCH |
+    | `01a07721-91d6-…` | `f_global_p_bf5e63b1f78c76f7` | MATCH |
+    | `01a07766-37d6-…` | `f_global_p_cbf498eb3eed8553` | MATCH |
+
+  구 규칙은 셋 다 다른 값을 냈다.
+
+  **최종 실행(`ktdm-d2-008`).**
+
+    lifecycle    56 = 7 operation × 8 phase   (helper-api-audit 8개)
+    evidence     phase=evidence-validated, 파일 집합 exact, FK 제약 18, 리포트 2
+    api-audit    counts 3·1·7·3, FK constraints 18 / references 8
+                 feature_ids ["f_global_p_cbf498eb3eed8553"]
+                 feature_uuids ["01a07766-37d6-76cb-a619-5bc43013c4bd"]
+    lane         BLOCKED·RESULT·ACTIVE 모두 없음
+
+  **clone 러너의 계약도 함께 옮겼다.** place id를 재계산하지 않고 api-audit 증거에서
+  읽는다 — 같은 파일의 `owned_feature_uuids_sql`이 "UUID는 서버가 발급하므로 재계산할 수
+  없다"는 같은 이유로 이미 그렇게 하고 있었다. 두 파생 일치 단언도 새 규칙으로 다시 썼다.
+
+  **다섯째 결선 지점을 배포 실행이 찾아냈다.** 착수 전 acceptance 노트는 "네 곳"이라
+  적었는데 `admin_feature_live_supervisor.py`의 `--helper-action` argparse **choices**가
+  다섯째였다. 빠지면 argparse가 exit 2로 죽는데 그것은 lifecycle도 출력도 쓰기 **전**이라
+  lane에 아무 흔적이 없고, 실패가 "owned fixture cleanup left residue"라는 **엉뚱한 곳**을
+  가리킨다(`ktdm-d2-007`에서 실측: lifecycle 48개, api-audit 0개, 실제 잔여물은 0).
+  `tests/lint/test_supervisor_accepts_every_helper_action.py`가 러너 호출부에서 유도해
+  세 쪽을 결박한다. 해제 조건의 표를 다섯 줄로 고쳤다.
+
+  **남은 것 없음.** `purge`는 여전히 러너가 부르지 않는다 — hard purge는 `T-VN-M02`가
+  fence하고 있고, supervisor 허용 목록도 호출자가 생길 때 함께 여는 것이 계약이다
+  (게이트가 그것을 단언한다).
+
 ## T-VN-41F1D-E — 구 generation 퇴역·v6/v8 attestation 전환 (2026-09-06 완료)
 
 - [x] T-VN-41F1D-E — 저장소측은 2026-08-25에 끝났고, 남았다고 적힌 "n150 data-dependent
