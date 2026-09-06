@@ -18,6 +18,9 @@ _RUN_ID_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z0-9][a-z0-9-]{15,79}$")
 _COMMIT_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{64}$")
 _IMAGE_ID_RE: Final[re.Pattern[str]] = re.compile(r"^sha256:[0-9a-f]{64}$")
+_UUID_RE: Final[re.Pattern[str]] = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+)
 _PHASE_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9_-]{1,63}$")
 _TOKEN_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9-]{1,63}$")
 _C7_MODULE_RELATIVE: Final[str] = "scripts/lib/c7_prod_attestation.py"
@@ -603,6 +606,21 @@ def _validate_c7_module(args: argparse.Namespace) -> None:
         raise ValueError("C7 module bootstrap mismatch")
 
 
+#: helper가 action별로 **추가로** 내는 evidence 키.
+#:
+#: `seed`는 weather/price current-summary receipt의 run id 두 개를,
+#: `api-audit`은 관측한 feature UUID 목록을 함께 낸다
+#: (`admin_feature_live_fixture.py`의 결과 조립부). exact 키 집합에 이것들이 없으면
+#: 성공한 seed evidence가 `direct evidence mismatch`로 거절된다 — 그리고 그 검증은
+#: 스펙이 통과한 뒤에만 돌기 때문에 D2가 통과한 적이 없는 동안에는 드러날 수 없었다
+#: (2026-09-06 실측).
+_DIRECT_EXTRA_KEYS: Final[dict[str, frozenset[str]]] = {
+    "seed": frozenset({"summary_run_ids"}),
+    "api-audit": frozenset({"feature_uuids"}),
+    "purge": frozenset({"purged"}),
+}
+
+
 def _validate_direct(path: Path, action: str, counts: dict[str, int], references: int) -> int:
     payload = _read_root_json(path)
     if (
@@ -614,6 +632,7 @@ def _validate_direct(path: Path, action: str, counts: dict[str, int], references
             "foreign_key_references",
             "version",
         }
+        | _DIRECT_EXTRA_KEYS.get(action, frozenset())
         or payload.get("version") != 1
         or payload.get("action") != action
         or payload.get("counts") != counts
@@ -622,6 +641,30 @@ def _validate_direct(path: Path, action: str, counts: dict[str, int], references
         or payload["foreign_key_constraints_checked"] < 2
     ):
         raise ValueError("direct evidence mismatch")
+    # 추가 키를 **받기만 하면** 계약이 아니라 구멍이다. 모양까지 본다.
+    if action == "seed":
+        run_ids = payload["summary_run_ids"]
+        if (
+            not isinstance(run_ids, list)
+            or len(run_ids) != 2
+            or len(set(run_ids)) != 2
+            or any(type(value) is not int or value <= 0 for value in run_ids)
+        ):
+            raise ValueError("direct evidence mismatch")
+    if action == "api-audit":
+        uuids = payload["feature_uuids"]
+        if not isinstance(uuids, list) or any(
+            not isinstance(value, str) or _UUID_RE.fullmatch(value) is None
+            for value in uuids
+        ):
+            raise ValueError("direct evidence mismatch")
+    if action == "purge":
+        purged = payload["purged"]
+        if not isinstance(purged, dict) or any(
+            not isinstance(key, str) or type(value) is not int or value < 0
+            for key, value in purged.items()
+        ):
+            raise ValueError("direct evidence mismatch")
     return int(payload["foreign_key_constraints_checked"])
 
 
