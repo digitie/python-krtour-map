@@ -592,20 +592,21 @@ downstream 사용처를 먼저 세어야 한다(`scripts/m05_activation_attestat
 ## T-VN-M01
 
 ```markdown
-- [~] **T-VN-M01 — admin Feature 생성 API clean cutover** (결정 1, 구현 병합). Map PR #1029
+- [x] **T-VN-M01 — admin Feature 생성 API clean cutover** (2026-09-06 완료). Map PR #1029
   (merge `57c9d99a`)에 `0226_m01_manual_feature_create`의 DB/ACL/backup manifest와 API·Admin BFF가
   함께 착지했다. PinVi direct-create fail-close는 [PinVi #458](https://github.com/digitie/pinvi/pull/458)로
   완료됐다. 남은 것은 `KOR_TRAVEL_MAP_API_ADMIN_MANUAL_FEATURE_CREATE_ENABLED=false`를 유지한
   route 활성화 전 fresh restore/ACL/live gate다.
 ```
 
-**활성화 전제 셋** (설계 문서 §1). 셋을 모두 만족하기 전에는 플래그를 `true`로 바꾸지 않는다.
+**활성화 전제 셋** (설계 문서 §1). 셋을 모두 만족하기 전에는 플래그를 `true`로 바꾸지
+않는다. **2026-09-06에 셋 다 닫혔고 플래그는 `true`다.**
 
 | 전제 | 상태 |
 |---|---|
 | PinVi `new_place` 직접 create 제거 배포 | **완료** (PinVi #458) |
-| M01 DB/API/admin UI + 최소 backup·restore·ACL reconciliation 배포 | DB/API/UI 완료(#1029). ACL reconciler는 API 부팅마다 실행. **restore 축은 300 baseline이 대체**(아래) |
-| 전용 BFF 자격 성공 · PinVi/일반 AdminBFF 거부 · DB zero-write smoke | **미실행** — 성공 케이스는 플래그가 켜져야 관측 가능 |
+| M01 DB/API/admin UI + 최소 backup·restore·ACL reconciliation 배포 | DB/API/UI 완료(#1029). ACL reconciler는 API 부팅마다 실행. **ACL 축 55/55**(rebuild 앞뒤 두 번). **restore 축은 300 baseline이 대체**(아래) |
+| 전용 BFF 자격 성공 · PinVi/일반 AdminBFF 거부 · DB zero-write smoke | **완료** — 성공 201, 거부 4/4 403, witness 8관계 증분 0 |
 
 **ACL 축 — 2026-09-05 배포 런타임 실측 통과(55/55).** `scripts/m01_activation_preflight.py`가
 설계 §8.1~8.3을 재실행 가능한 형태로 확인한다. 아무것도 쓰지 않으므로(catalog
