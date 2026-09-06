@@ -518,6 +518,62 @@ downstream 사용처를 먼저 세어야 한다(`scripts/m05_activation_attestat
 
 ## T-VN-41C
 
+**2026-09-06 실측 상태 — 종전 서술 정정.** 다섯 축을 병렬 조사하고 각 발견을 반증에
+부쳤다. 원장이 41C를 "reconciliation 구현이 남았다"로 재분류(2026-09-04)한 것은
+**근거 사슬이 어긋난 결과**였다: 근거로 인용한 `tasks-done.md` 문장은 reconciliation의
+*구현*이 아니라 *live acceptance*를 잔여로 적는다.
+
+| 요구 | 상태 | 근거 |
+|---|---|---|
+| relay: lease | **구현 있음** | `cache_target_outbox_repo.py` — lease token/만료 컬럼, 상한 300초 상수 |
+| relay: retry | **구현 있음** | `nack` → `attempt_count` 증가, `max_attempts=5` 초과·permanent error면 dead 전이 |
+| relay: dead-letter | **구현 있음** | 조회/상세/목록 API + ETag |
+| relay: replay | **구현 있음** | service·admin 양쪽 endpoint, 격리 live spec이 admin replay를 실제로 클릭 |
+| DB 대조 reconciliation | **구현 있음** | 5-status 상태기계(`preparing/running/succeeded/failed/superseded`) 전이 5/5, natural-key head 두 번 server-cursor scan + Merkle root 고정 |
+| snapshot concurrency 1 | **구현 있음** | external_system별 lock |
+| `429/503 Retry-After` backoff · `413` non-retry | **구현 있음** | 서버 발행 + 소비자 파싱·분류 |
+| credential별 gateway limit | **미확인** | 세 저장소에 없다. 저장소 밖(HAProxy 등) 설정일 가능성 — 확인되지 않았다 |
+
+**남은 것 셋.**
+
+1. **런타임 결선.** 배포 Map API 컨테이너에
+   `KOR_TRAVEL_MAP_API_CACHE_TARGET_SERVICE_PRINCIPALS`가 **키 자체로 없다**. 배포 토큰으로
+   `/v1/service/cache-target-streams/pinvi`를 부르면 401 `CACHE_TARGET_SERVICE_TOKEN_INVALID`
+   인 반면 같은 토큰이 `/v1/features`에서는 422다(인증 통과). ops read 표면은 200으로 살아
+   있고 그 값이 relay 관계 19개 **전부 0행**임을 보인다 — 이 세대에서 relay가 한 번도 흐른
+   적이 없다. Manager `.env`에는 cache-target 키 10개가 **존재하지만** 값이 전부 inert이고
+   compose가 어느 컨테이너에도 매핑하지 않는다. 즉 "env가 하나도 없다"는 컨테이너 기준으로만
+   참이다.
+2. **enable 경계 구현.** PinVi config가 `PINVI_ENVIRONMENT=production`에서 sync enable을
+   startup `ValueError`로 거부하며 이유를 스스로 적는다 — "root-owned final C7 enable
+   boundary가 구현될 때까지". 그 boundary는 **Manager 저장소에 없다**(Manager 전체에서
+   `CACHE_TARGET`은 5개 파일뿐이고 전부 inert 기본값의 정의·검증·생성 상수다).
+3. **구조적 순환 — 소유자 판정이 필요하다.** cache-target을 켜면 `.env` 바이트가 바뀌어
+   `environment_sha256`이 달라지고 v8 journal 결박이 깨진다. 그런데 다시 rebuild하려면
+   Manager `require_rebuildable_mode`가 요구하는 `_REBUILDABLE_CACHE_TARGET_DEFAULTS`(정확히
+   그 inert 값들)를 만족해야 한다. **현 lifecycle(rehearsal/rebuildable)에서 enable과 pinned
+   rebuild는 상호배타다.** 셋 중 하나가 필요하다 — (a) lifecycle을 옮긴다, (b) Manager가
+   cache-target 축을 `environment_sha256` 결박에서 분리한다, (c) enable을 실 production 전환
+   시점까지 미룬다.
+
+**정정할 두 문장.**
+
+- 본문이 "n150 GC 실측"을 완료로 위임한 근거는 **폐기 세대**(head `0225`)의 것이고,
+  재실행 스크립트 `scripts/verify-tvn41c-cache-target-gc.sh`는 5줄짜리 `exit 2` stub이다.
+  게다가 그 수치는 `0231`(material/receipt 분리 + `eligible_items` 셈 재작성) **이전**이라
+  세대 문제가 아니라 계약 문제다. 다만 D2의 restore 축과 달리 **수행 가능한 형태다** —
+  퇴역한 것은 step ① 하나이고 활성 대체물이 있으며 GC 도메인의 스키마·job·schedule은 head
+  `303`에서 그대로 유효하다.
+- receipt 승격(`pending → candidate_verified`)이 요구하는
+  `map_service_openapi_sha256 == pinvi_service_vendor_sha256`은 지금 **성립하지 않는다**.
+  저장소의 후보 archive(`contracts/vnext/t-vn-41-candidate-manifest-v1.json`)는 옛 후보
+  `77821001`/`e8e0fec`에 핀돼 있고 그 sha는 `c6f9aba6…`인데, 현 트리의
+  `packages/kor-travel-map-api/openapi.service.json`은 `99ba6c17…`다.
+
+**표기 주의.** `1-a`/`1-b`/`1-c`는 어느 정본에도 정의가 없다 — 2026-09-04 커밋이 범례 없이
+처음 쓴 표기이고 Map·PinVi·ADR·integration-map·contracts 어디에도 대응 문서가 없다. 이
+표기로 잔여를 세지 마라.
+
 ```markdown
 - [~] T-VN-41C — **relay·reconciliation·consumer enable**
 
