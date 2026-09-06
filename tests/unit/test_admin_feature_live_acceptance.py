@@ -698,6 +698,10 @@ def test_runner_uses_trusted_c7_v4_v6_v8_runtime_attestation_before_state() -> N
     assert 'E2E_C7_REBUILD_JOURNAL' in runner
     assert 'E2E_C7_COMPATIBLE_PAIR_MANIFEST' not in runner
     assert 'E2E_C7_EXPECTED_GIT_COMMIT' in runner
+    # 진단 문구가 퇴역 포맷을 가리키면 실패한 사람이 없는 파일을 찾는다. 2026-09-06까지
+    # attestation 실패 메시지가 `v4/v5/v7`이라고 적었는데 그 호출은 v6 manifest와 v8
+    # journal을 넘긴다 — v4/v5/v7은 `retired-<pinset>/`로 퇴역한 포맷이다.
+    assert 'v4/v5/v7' not in runner
 
 
 def test_cursor_secret_is_attested_and_fail_closed_on_exact_api_image() -> None:
