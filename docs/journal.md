@@ -1,5 +1,61 @@
 # journal.md — 작업 일지 (역시간순)
 
+## 2026-09-06 — 원장이 나를 틀린 작업으로 보냈다. 41C는 구현이 남은 게 아니었다
+
+D2를 닫고 `docs/resume.md`가 적은 "다음 한 작업"을 따라 `T-VN-41C`에 착수했다. 다섯 축을
+병렬로 실측하고 각 발견을 반증에 부치자 두 가지가 드러났다.
+
+### 1. 순서 정본이 서로 모순이었다
+
+    docs/tasks-acceptance.md:34      D1 → E → D2 → 41C
+    docs/tasks-acceptance.md:89-96   같은 순서(배리어 5단계)
+    docs/tasks-done.md:87            같은 순서
+    docs/resume.md:23, :63           41C → F1D-E   ← 뒤집혀 있다
+
+즉 41C의 선행은 `T-VN-41F1D-E`인데 resume.md만 반대로 적었고, **CLAUDE.md가 resume.md를
+"다음 한 작업의 단일 정본"으로 지정**하므로 그것을 따른 나는 선행을 건너뛰었다. 더 나쁜
+것은 이것이 재발이라는 점이다 — 2026-09-04 journal이 같은 오류를 "내 오류"로 정정했는데
+resume.md에 다시 들어와 있었다.
+
+**배울 것.** 정본을 여러 파일에 두면 그중 하나만 틀려도 전체가 틀린다. 이 저장소는 그
+결함 계열을 `AGENTS.md` DO NOT 15로 이미 이름 붙여 뒀다(이중 선언). 순서도 같은 계열이다.
+
+### 2. "reconciliation은 구현이 남아 있다"가 거짓이었다
+
+2026-09-04에 41C를 "acceptance가 아니라 구현이 먼저"로 재분류했고 그 근거로
+`tasks-done.md`를 인용했다. 그런데 인용된 문장은 reconciliation의 **구현**이 아니라
+**live acceptance**를 잔여로 적는다. 근거 사슬이 어긋나 있었다.
+
+실측하면 relay 넷이 전부 있다 — `cache_target_outbox_repo.py`에 lease(만료 컬럼 + 상한
+300초), retry(`attempt_count`/`max_attempts=5`), dead-letter(조회·상세·목록 + ETag),
+replay(service·admin 양쪽). reconciliation도 5-status 상태기계 전이가 5/5이고 DB 대조는
+natural-key head를 두 번 server-cursor scan해 Merkle root로 고정한다. 라우터가 repo를
+끝까지 부른다.
+
+남은 것은 **런타임 결선**, **enable 경계 구현**, 그리고 **구조적 순환**이다. 셋째가 가장
+무겁다: 켜면 `environment_sha256`이 바뀌어 rebuild가 필요한데, Manager가 rebuild를 하려면
+cache-target 값이 inert여야 한다. **현 lifecycle에서 enable과 rebuild는 상호배타**이고
+이건 코드로 풀 문제가 아니라 소유자 판정이다.
+
+### 부수로 드러난 것
+
+- `1-a`/`1-b`/`1-c` 표기는 어느 정본에도 정의가 없다. 2026-09-04 커밋이 범례 없이 처음
+  썼고 세 저장소·ADR·integration-map·contracts 어디에도 대응이 없다. 이 표기로 잔여를 세면
+  세는 사람마다 다른 것을 센다.
+- 41C 본문이 "n150 GC 실측"을 완료로 위임하는데 그 러너는 5줄 `exit 2` stub이고 수치는
+  `0231` **이전** 세대의 것이다. 위임 문장이 현재 거짓이다.
+- receipt 승격이 요구하는 `map_service_openapi_sha256 == pinvi_service_vendor_sha256`이
+  성립하지 않는다. 후보 archive는 옛 후보(`77821001`/`e8e0fec`, sha `c6f9aba6…`)에 핀돼
+  있고 현 트리는 `99ba6c17…`다.
+
+### 조사 자체의 한계
+
+세션 한도로 반증 41건과 종합이 돌지 못했다(28건만 실행, 10건 반증·18건 통과). 위의
+결론은 반증을 통과했거나 **내가 직접 재현한** 것만 적었다 — relay 넷의 존재, 5-status
+전이, GC stub 5줄, 순서 모순 네 인용, 후보 archive의 sha 불일치는 전부 직접 확인했다.
+반증이 돌지 못한 발견은 원장에 넣지 않았다.
+
+
 ## 2026-09-06 — D2가 닫혔다. 스펙이 아니라 **증거 계약**에서 열두 번 걸렸던 것
 
 `T-VN-41F1D-D2`가 오래 진전이 없던 이유를 근본에서 보면 두 겹이었다.

@@ -16,11 +16,19 @@
 
 ### 다음 한 작업
 
-**`T-VN-41C`** — relay·reconciliation·consumer enable. acceptance가 아니라 **구현이
-먼저다**(2026-09-04 재분류): reconciliation 구현이 남아 있고, cache-target 1-b/1-c는 현
-런타임에 env/principal이 하나도 없으며, 1-a는 production 호출자가 0건이다.
+**`T-VN-41F1D-E`** — 구 generation 퇴역·v6/v8 attestation 전환. 해제 조건이 "저장소측은
+2026-08-25 완료, 남은 것은 F1D-D 순서를 따르는 n150 data-dependent 실행뿐"이라 적는데,
+**그 실행은 D1(11 passed)과 D2(passed)가 pinset `48166bd2`에서 이미 했다.** 남은 구체
+작업은 호스트측 퇴역이다 — `/etc/kor-travel-map/`에 v6/v8 세대가 **여섯 쌍** 있고 퇴역된
+것은 `de5206dc` 하나뿐이다. 활성은 `48166bd2`이고 나머지 다섯(`05b6f442`·`54b8efd0`·
+`af6d7061`·`c6633015`·`e6b52db4`)이 superseded다.
 
-그 뒤 순서는 `T-VN-41C` → `T-VN-41F1D-E`다. `GM-17`은 소유자 지시로 **가장 마지막**이다.
+`T-VN-41C`는 그 뒤다. 2026-09-06 재조사가 41C 서술을 정정했다 — reconciliation은
+**구현이 끝나 있고**, 남은 것은 런타임 결선·enable 경계 구현·구조적 순환(소유자 판정)
+셋이다. `docs/tasks.md`의 줄이 정본이다.
+
+그 뒤 순서는 **`T-VN-41F1D-E` → `T-VN-41C`**다(2026-09-06 정정 — 이 줄이 순서를 뒤집어
+적고 있었다). `GM-17`은 소유자 지시로 **가장 마지막**이다.
 `T-VN-D2-API-AUDIT`(helper의 `api-audit`/`purge` 경로가 한 번도 실행된 적 없음)은 D2 완주와
 분리했다 — 고치려면 clone lane의 content digest 계약까지 함께 판단해야 한다.
 
@@ -60,7 +68,7 @@ generation의 `map_source_revision`과 exact여야 하므로, Map revision이 �
 rotate-pair → rebuild → attestation 재발행 → 스냅샷 재설치 → executor 이미지 재빌드 →
 D1 → D2가 따라온다. 전 과정이 이번에 스크립트로 남았다.
 
-그 뒤 순서는 `T-VN-41C` → `T-VN-41F1D-E`다. `GM-17`(Manager production compose
+그 뒤 순서는 **`T-VN-41F1D-E` → `T-VN-41C`**다(2026-09-06 정정). `GM-17`(Manager production compose
 required-set 완화)은 소유자 지시로 **가장 마지막**이다.
 
 ### 이번에 확인된 운영 사실
