@@ -244,6 +244,30 @@ make_runtime() {
   chmod 700 -- "$LIFECYCLE_DIR"
 }
 
+# 이 lane이 만드는 컨테이너 operation의 **유일한 선언**이다.
+#
+# 종전에는 같은 목록이 두 곳에 있었다 — 호출부(`run_helper`/`run_executor`/
+# `run_cursor_probe`)와 `assert_container_residue_zero`의 결정론적 이름 루프. 새 operation을
+# 호출부에만 더하면 잔여물 확인이 그 이름을 **조용히 건너뛴다.** 실제로 곧 그럴
+# 예정이었다(`T-VN-D2-API-AUDIT`가 helper의 `api-audit`/`purge` 경로를 살린다).
+# 이제 목록은 여기 하나이고, 등록되지 않은 operation은 실행 순간에 죽는다.
+readonly LANE_OPERATIONS=(
+  probe-cursor-missing
+  helper-seed
+  helper-cleanup
+  helper-audit
+  executor-main
+  executor-recovery
+)
+
+assert_registered_operation() {
+  local candidate="$1" known
+  for known in "${LANE_OPERATIONS[@]}"; do
+    [[ "$known" != "$candidate" ]] || return 0
+  done
+  die "unregistered lane operation: $candidate"
+}
+
 container_name() {
   local actor="$1"
   local attempt="$2"
@@ -316,6 +340,7 @@ run_supervisor() {
   local operation="$2"
   shift 2
   local name status=0
+  assert_registered_operation "$operation"
   name="$(container_name "$ACTOR" "$ATTEMPT" "$operation")"
   [[ ! -e "$ACTIVE_FILE" && ! -L "$ACTIVE_FILE" ]] ||
     die "prior ACTIVE operation must be drained before launch"
@@ -357,6 +382,10 @@ run_executor() {
   local operation="$1"
   local artifact_dir="$2"
   local recovery_only="$3"
+  # funnel(`run_supervisor`)도 확인하지만 여기서 먼저 본다 — 아래 `mkdir`이 funnel보다
+  # 앞서므로, 확인이 funnel에만 있으면 미등록 operation이 root 소유 700 디렉터리를
+  # 남기고 죽는다(2026-09-06 적대 리뷰 실측).
+  assert_registered_operation "$operation"
   mkdir -- "$artifact_dir"
   chown 0:0 -- "$artifact_dir"
   chmod 700 -- "$artifact_dir"
@@ -384,8 +413,7 @@ assert_container_residue_zero() {
   local actor attempt operation name
   for actor in main recovery; do
     for (( attempt = 0; attempt <= ATTEMPT; attempt += 1 )); do
-      for operation in \
-        probe-cursor-missing helper-seed executor-main executor-recovery helper-cleanup helper-audit; do
+      for operation in "${LANE_OPERATIONS[@]}"; do
         name="$(container_name "$actor" "$attempt" "$operation")"
         ! docker container inspect -- "$name" >/dev/null 2>&1 ||
           die "deterministic Docker container name residue remains"
