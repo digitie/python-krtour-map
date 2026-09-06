@@ -10,6 +10,31 @@
 > | 2026-07-27 ~ 2026-07-31 | [archive/tasks-done-2026-07a.md](archive/tasks-done-2026-07a.md) |
 > | ~ 2026-07-26 (C7·Admin) | [archive/tasks-done-2026-07b.md](archive/tasks-done-2026-07b.md) |
 
+## T-VN-M01 — admin Feature 생성 API clean cutover (2026-09-06 완료)
+
+- [x] T-VN-M01 — 활성화 전제 셋이 전부 닫혔고 route가 live다.
+  `KOR_TRAVEL_MAP_API_ADMIN_MANUAL_FEATURE_CREATE_ENABLED=true`
+  (`/opt/kor-travel-docker-manager/.env`, 2026-09-05T20:27:59Z, 백업
+  `.env.bak-pre-m01-activation-20260905T202759Z`).
+
+  | 전제 | 결과 |
+  |---|---|
+  | PinVi `new_place` 직접 create 제거 | 완료 ([PinVi #458](https://github.com/digitie/pinvi/pull/458)) |
+  | DB/API/admin UI + ACL reconciliation | 완료(#1029). ACL 축 **55/55**, 활성화 rebuild 앞뒤로 두 번 측정 — §8.2가 "restore 뒤 동일"을 요구하기 때문 |
+  | restore 축 | **수행 가능한 형태가 아니다** — 설계(2026-08-19) 이후의 300 baseline 결정이 `docker-restore*.sh` 셋을 본문 없이 종료시켰다. 소유자 판정(2026-09-06)으로 전제에서 뺐다 |
+  | 전용 BFF 자격 성공 | `POST /v1/admin/features` → **201**(2026-09-05 배포 스택). D2 lane이 매 실행 재관측한다 |
+  | PinVi·일반 AdminBFF 거부 | `scripts/m01_activation_live_gate.py` — 잘못된 자격 조합 넷 전부 **403**(자격 없음 / proxy secret만 / create token만 / proxy secret + 틀린 token). body는 유효한 것을 보내 자격 검증이 body 검증보다 먼저 도는 것까지 확인 |
+  | DB zero-write smoke | 같은 스크립트가 거부 실행 전후로 witness 8관계 count 대조 — **증분 0** |
+
+  **되살릴 조건.** 300 baseline에 맞는 검증된 restore 경로가 생기면 설계 §10.3을 그대로
+  다시 세운다. 그때 §8.3 재통과는 `scripts/m01_activation_preflight.py`가 그대로 수행한다 —
+  그 스크립트를 남긴 이유가 이것이다.
+
+  **위임한 것.** backup 축은 저장소에 구현돼 있으나 이 배포에는 backup root 설정도
+  산출물도 없다(2026-09-06 실측). 활성화 전제로 세지 않으며 `T-VN-H49` 계열이 소유한다.
+  origin/provenance 보존·불변성과 hard purge 정책은 `T-VN-M02`가 소유한다 — 2026-09-05
+  격리 probe가 만든 Feature 1건이 `suppressed`로 남아 있고 hard purge는 그때까지 fence다.
+
 ## T-VN-41F1D-D2 — data-dependent admin live E2E (2026-09-06 완료)
 
 - [x] T-VN-41F1D-D2 — 배포 스택에서 lane이 `phase: passed` / `status: complete`로 닫혔다
