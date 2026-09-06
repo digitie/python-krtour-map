@@ -187,7 +187,7 @@ validate_runtime() {
       "$E2E_C7_REBUILD_JOURNAL" \
       "$PWD" \
       "$PLAYWRIGHT_BASE_IMAGE" 2>/dev/null
-  ) || die "trusted C7 v4/v5/v7 runtime attestation failed"
+  ) || die "trusted C7 v6/v8 runtime attestation failed"
   (( ${#attestation_output[@]} == 3 )) || die "runtime attestation output is invalid"
   PINNED_RUNTIME_MANIFEST_SHA256="${attestation_output[0]}"
   REBUILD_JOURNAL_SHA256="${attestation_output[1]}"
