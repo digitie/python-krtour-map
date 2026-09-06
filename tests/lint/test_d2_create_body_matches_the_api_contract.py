@@ -15,6 +15,7 @@ D2 스펙은 `lifecycle_state`·`publication_state`·`quality_state` 셋을 보�
 
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 
@@ -43,29 +44,80 @@ _SPEC = (
     / "admin-feature-acceptance-write.live.spec.ts"
 )
 
-#: `    name: str | None = Field(...)` / `    kind: Literal["place", "event"]`
-_FIELD = re.compile(r"^    (?P<name>[a-z][a-z0-9_]*)\s*:\s*[^=\n]", re.MULTILINE)
+_CREATE_MODEL = "AdminFeatureCreateRequest"
 
 
-def _class_body(source: str, name: str) -> str:
-    start = source.index(f"\nclass {name}(")
-    rest = source[start + 1 :]
-    end = rest.index("\nclass ", 1)
-    return rest[:end]
+def _router_tree() -> ast.Module:
+    return ast.parse(_ROUTER.read_text(encoding="utf-8"))
 
 
-def _model_fields(name: str) -> set[str]:
-    source = _ROUTER.read_text(encoding="utf-8")
-    body = _class_body(source, name)
-    return {match.group("name") for match in _FIELD.finditer(body)}
+def _class_nodes() -> dict[str, ast.ClassDef]:
+    return {
+        node.name: node
+        for node in ast.walk(_router_tree())
+        if isinstance(node, ast.ClassDef)
+    }
+
+
+def _declared_fields(node: ast.ClassDef) -> set[str]:
+    """클래스 **본문에 직접 선언된** annotated field만 센다.
+
+    종전에는 `\\nclass X(` 부터 다음 `\\nclass ` 까지를 텍스트로 잘라 정규식을
+    돌렸다. 두 클래스 사이에 있는 **모듈 수준 함수의 지역 주석까지 쓸어 담았고**,
+    실제로 `try`가 "모델 필드"로 잡혔다(2026-09-06 적대 리뷰 실측). 그러면 스펙이
+    그 이름을 보내도 게이트가 green이 된다. AST로 본문만 본다.
+    """
+
+    return {
+        statement.target.id
+        for statement in node.body
+        if isinstance(statement, ast.AnnAssign)
+        and isinstance(statement.target, ast.Name)
+    }
 
 
 def _create_request_fields() -> set[str]:
-    """`AdminFeatureCreateRequest` + 상속한 base의 필드 집합."""
+    """`AdminFeatureCreateRequest`와 **선언된 base들**의 필드 집합.
 
-    return _model_fields("AdminFeatureCreateRequest") | _model_fields(
-        "AdminFeatureBaseMutation"
-    )
+    base 이름을 손으로 적지 않는다 — `class X(Base)`의 base를 따라간다. 종전에는
+    `AdminFeatureBaseMutation`을 리터럴로 합쳤는데, create가 base에서 떨어져 나가면
+    게이트가 없는 필드를 계속 허용해 **거짓 green**이 된다.
+    """
+
+    classes = _class_nodes()
+    assert _CREATE_MODEL in classes, f"{_CREATE_MODEL}을 찾지 못했다 — 게이트가 공허해졌다"
+    fields: set[str] = set()
+    pending = [_CREATE_MODEL]
+    seen: set[str] = set()
+    while pending:
+        name = pending.pop()
+        if name in seen or name not in classes:
+            continue
+        seen.add(name)
+        node = classes[name]
+        fields |= _declared_fields(node)
+        pending.extend(
+            base.id for base in node.bases if isinstance(base, ast.Name)
+        )
+    return fields
+
+
+def _base_model_config_forbids_extra() -> bool:
+    """`AdminFeatureCreateRequest` 계열 어딘가가 `extra="forbid"`를 선언하는가."""
+
+    classes = _class_nodes()
+    pending = [_CREATE_MODEL]
+    seen: set[str] = set()
+    while pending:
+        name = pending.pop()
+        if name in seen or name not in classes:
+            continue
+        seen.add(name)
+        node = classes[name]
+        if 'extra="forbid"' in ast.unparse(node).replace("'", '"'):
+            return True
+        pending.extend(base.id for base in node.bases if isinstance(base, ast.Name))
+    return False
 
 
 def _spec_create_body_keys() -> set[str]:
@@ -86,10 +138,15 @@ def test_the_gate_reads_both_sides() -> None:
     assert len(fields) >= 15, f"모델 필드를 {len(fields)}개만 읽었다 — 파서를 의심하라"
     keys = _spec_create_body_keys()
     assert len(keys) >= 5, f"스펙 body 키를 {len(keys)}개만 읽었다 — 파서를 의심하라"
-    # 모델이 실제로 `extra="forbid"`여야 이 대조가 의미를 갖는다.
-    body = _class_body(_ROUTER.read_text(encoding="utf-8"), "AdminFeatureBaseMutation")
-    assert 'extra="forbid"' in body, (
-        "create body 모델이 더 이상 extra를 거부하지 않는다 — 이 게이트를 다시 판단하라"
+    # 모델이 실제로 `extra="forbid"`여야 이 대조가 의미를 갖는다. base 이름을 손으로
+    # 적지 않고 상속을 따라 찾는다.
+    assert _base_model_config_forbids_extra(), (
+        "create body 모델 계열이 더 이상 extra를 거부하지 않는다 — 모델에 없는 키를 "
+        "보내도 422가 아니게 되므로 이 게이트를 다시 판단하라"
+    )
+    # 텍스트 슬라이스가 쓸어 담던 비-필드가 사라졌는지 본다.
+    assert "try" not in fields, (
+        "필드 집합에 `try`가 있다 — 클래스 본문이 아니라 텍스트 구간을 읽고 있다"
     )
 
 

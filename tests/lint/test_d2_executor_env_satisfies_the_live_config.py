@@ -64,10 +64,53 @@ def _flag_to_env() -> dict[str, str]:
     return mapping
 
 
-def _guard_body() -> str:
+_GUARD_ENTRY = "isolatedAuthRequestHeaders"
+#: 모듈 최상위 `function name(` 선언
+_FUNCTION_DECL = re.compile(
+    r"^function\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*\(", re.MULTILINE
+)
+_CALL = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(")
+
+
+def _function_bodies() -> dict[str, str]:
+    """config 모듈의 최상위 함수 이름 → 본문."""
+
     source = _config_source()
-    start = source.index("function isolatedAuthRequestHeaders(")
-    return source[start : source.index("\n}", start)]
+    return {
+        match.group("name"): source[match.start() : source.index("\n}", match.start())]
+        for match in _FUNCTION_DECL.finditer(source)
+    }
+
+
+def _guard_body() -> str:
+    """가드와 **그것이 부르는 같은 모듈 함수들**의 본문을 합친다.
+
+    종전에는 `isolatedAuthRequestHeaders` 한 함수만 잘라 봤다. 요구 하나가 헬퍼로
+    빠지면 유도 집합이 조용히 줄고 `missing == []`이 공허하게 통과한다(2026-09-06
+    적대 리뷰 #29). 호출을 따라가면 그 구멍이 닫힌다.
+    """
+
+    bodies = _function_bodies()
+    assert _GUARD_ENTRY in bodies, (
+        f"config에서 `{_GUARD_ENTRY}`를 찾지 못했다 — 이름이 바뀌었으면 이 게이트도 "
+        "함께 다시 판단하라. 지금 상태로는 아무것도 유도하지 못한다."
+    )
+    seen: set[str] = set()
+    pending = [_GUARD_ENTRY]
+    parts: list[str] = []
+    while pending:
+        name = pending.pop()
+        if name in seen:
+            continue
+        seen.add(name)
+        body = bodies[name]
+        parts.append(body)
+        pending.extend(
+            called
+            for called in _CALL.findall(body)
+            if called in bodies and called not in seen
+        )
+    return "\n".join(parts)
 
 
 def _required_envs() -> set[str]:
@@ -111,6 +154,10 @@ def test_the_gate_reads_both_sides() -> None:
     required = _required_envs()
     assert required, "가드가 요구하는 env를 하나도 유도하지 못했다 — 파서를 의심하라"
     assert "--env" in _executor_source(), "supervisor의 executor env 목록을 찾지 못했다"
+    # 가드 본문 수집이 호출을 따라가는지 본다 — 한 함수만 보면 헬퍼로 빠진 요구를
+    # 놓치고 아래 `missing == []`이 공허해진다.
+    bodies = _function_bodies()
+    assert len(bodies) >= 5, f"config 함수를 {len(bodies)}개만 읽었다 — 파서를 의심하라"
 
 
 #: `"--env",\n    "NAME=VALUE",` 또는 `"--env",\n    "NAME",`(호스트 env 전달)
