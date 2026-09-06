@@ -785,11 +785,12 @@ owned_feature_ids_sql() {
   local run_id="$1"
   [[ "$run_id" =~ ^[a-z0-9][a-z0-9-]{15,79}$ ]] ||
     die "API-owned feature ID run ID is invalid"
-  # T-VN-36 live spec은 여섯 개의 결정적 fixture id를 쓰지 않는다. admin create가
-  # 만드는 Feature는 **한 건**이고 그 id는 서버가 `{name}:{lon:.6f},{lat:.6f}`
-  # 자연키로 발급한다(`_create_feature_id`). 감사 helper의
-  # `_admin_fixture_feature_id`가 같은 규칙을 갖고 관측값과 대조하므로 규칙이
-  # 어긋나면 조용히 새지 않고 감사가 실패한다.
+  # T-VN-36 live spec은 여섯 개의 결정적 fixture id를 쓰지 않는다. 두 provider
+  # fixture(weather/price)의 id는 run_id 자연키로 **재계산**할 수 있다. 그러나 admin
+  # create가 만드는 place Feature의 id는 M01 뒤로 `manual::{feature_uuid}`를 자연키로
+  # 쓰고 그 uuid는 서버가 발급하는 랜덤 UUIDv7이라 **밖에서 재계산할 수 없다.**
+  # 그래서 그 하나는 api-audit 증거에서 읽는다 — 아래 `owned_feature_uuids_sql`이
+  # 같은 이유로 이미 그렇게 한다.
   python3 -I -B - "$run_id" <<'PY'
 import hashlib
 import sys
@@ -803,13 +804,36 @@ def make_id(kind: str, category: str, source_type: str, source_natural_key: str)
 ids = [
     make_id("weather", "00000000", "e2e-live-acceptance", f"{run_id}:weather"),
     make_id("price", "00000000", "e2e-live-acceptance", f"{run_id}:price"),
-    make_id(
-        "place", "01070300", "user_request",
-        f"E2E TVN36 state fixture {run_id}:127.500000,36.500000",
-    ),
 ]
 print(",".join(repr(value) for value in ids))
 PY
+  owned_feature_ids_from_audit
+}
+
+owned_feature_ids_from_audit() {
+  # api-audit이 관측해 남긴 증거에서 admin-owned place Feature의 id를 읽는다.
+  # 증거가 아직 없으면(baseline/startup snapshot) run-owned Feature도 아직 없다 —
+  # `owned_feature_uuids_sql`과 같은 규약이다.
+  local audit_path="${RUNTIME_DIR-}/api-owned-audit.json"
+  if [[ -z "${RUNTIME_DIR-}" || ! -e "$audit_path" ]]; then
+    return 0
+  fi
+  [[ -f "$audit_path" && ! -L "$audit_path" ]] ||
+    die "API-owned audit evidence is unsafe"
+  [[ "$(stat -c '%u:%g:%a' -- "$audit_path")" == "0:0:600" ]] ||
+    die "API-owned audit evidence metadata is unsafe"
+  KTM_API_OWNED_AUDIT_PATH="$audit_path" python3 -I -B -c '
+import json
+import os
+
+with open(os.environ["KTM_API_OWNED_AUDIT_PATH"], encoding="utf-8") as handle:
+    payload = json.load(handle)
+values = payload.get("feature_ids") or []
+if not isinstance(values, list) or not all(isinstance(v, str) for v in values):
+    raise SystemExit("api-owned audit evidence feature_ids shape")
+if values:
+    print("," + ",".join(repr(value) for value in values))
+'
 }
 
 owned_feature_uuids_sql() {

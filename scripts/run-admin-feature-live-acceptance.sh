@@ -256,6 +256,7 @@ readonly LANE_OPERATIONS=(
   helper-seed
   helper-cleanup
   helper-audit
+  helper-api-audit
   executor-main
   executor-recovery
 )
@@ -473,6 +474,7 @@ recover_run() {
   run_executor executor-recovery "$RUNTIME_DIR/playwright-recovery" 1 || browser_status=$?
   run_helper cleanup "$RUNTIME_DIR/direct-cleanup.json" || helper_status=$?
   run_helper audit "$RUNTIME_DIR/direct-audit.json" || helper_status=$?
+  run_helper api-audit "$RUNTIME_DIR/direct-api-audit.json" || helper_status=$?
   assert_container_residue_zero
   if (( browser_status != 0 || helper_status != 0 )); then
     write_blocked recovery-failed
@@ -522,6 +524,10 @@ PY
     browser_cleanup_status=$?
   run_helper cleanup "$RUNTIME_DIR/direct-cleanup.json" || helper_cleanup_status=$?
   run_helper audit "$RUNTIME_DIR/direct-audit.json" || helper_cleanup_status=$?
+  # api-audit은 admin API가 만든 Feature의 완료 상태를 감사하고, 밖에서 재계산할 수
+  # 없는 식별자(서버 발급 uuid와 그 uuid로 만들어진 feature_id)를 증거로 남긴다.
+  # clone 러너의 content digest가 그 증거를 읽는다.
+  run_helper api-audit "$RUNTIME_DIR/direct-api-audit.json" || helper_cleanup_status=$?
   assert_container_residue_zero
   if (( browser_cleanup_status != 0 || helper_cleanup_status != 0 )); then
     write_blocked cleanup-failed

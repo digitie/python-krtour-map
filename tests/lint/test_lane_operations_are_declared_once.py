@@ -361,9 +361,18 @@ def test_the_registration_guard_actually_rejects() -> None:
         f"{declaration.group(0)}\n{guard.group(0)}\n"
     )
     declared = _declared_operations()
+    # 거부 후보는 **선언에 없는 것**에서 유도한다. 리터럴로 박으면 그중 하나가 나중에
+    # 등록되는 순간(실제로 `helper-api-audit`이 그랬다) 이 테스트가 "등록된 것을
+    # 거부해야 한다"고 요구하며 거짓 실패한다.
+    outsiders = [
+        name
+        for name in ("helper-purge", "helper-api-audit", "helper-nonexistent", "*", "")
+        if name not in declared
+    ]
+    assert outsiders, "선언 밖 후보를 하나도 만들지 못했다 — 거부 검증이 공허하다"
     accepted: list[str] = []
     rejected: list[str] = []
-    for candidate in [*declared, "helper-purge", "helper-api-audit", "*", ""]:
+    for candidate in [*declared, *outsiders]:
         # 후보를 **스크립트 본문에** 셸 인용으로 박고 **바이트 stdin**으로 넘긴다.
         # Git Bash(MSYS)에서는 셋 다 새는 것을 실측했다(2026-09-06):
         #   `bash -c s arg0 arg1` → `$0=/bin/bash`, `$#=0`
@@ -385,11 +394,7 @@ def test_the_registration_guard_actually_rejects() -> None:
         f"guard가 통과시킨 것이 선언과 다르다. 통과={accepted} 거부={rejected}. "
         "비교가 뒤집혔거나 인용이 빠져 패턴으로 해석되고 있는지 보라."
     )
-    unrejected = [
-        candidate
-        for candidate in ("helper-purge", "helper-api-audit", "*", "")
-        if candidate not in rejected
-    ]
+    unrejected = [candidate for candidate in outsiders if candidate not in rejected]
     assert unrejected == [], (
         f"guard가 미등록 operation을 거부하지 않는다: {unrejected!r} — 확인이 아니라 장식이다."
     )
