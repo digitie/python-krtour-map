@@ -618,10 +618,19 @@ downstream 사용처를 먼저 세어야 한다(`scripts/m05_activation_attestat
 그때 §8.3 재통과는 `scripts/m01_activation_preflight.py`가 그대로 수행한다 — 그 스크립트를
 남긴 이유가 이것이다.
 
-**남은 순서.** (1) 소유자가 플래그를 켠다(`.env` 변경이므로 `environment_sha256`이 바뀌어
-rebuild가 따라온다). (2) live gate 셋 — 전용 BFF 자격 성공, PinVi·일반 AdminBFF 거부,
-DB zero-write smoke. (3) 그 뒤에야 `T-VN-41F1D-D2`가 실행 가능하다 — D2의 첫 write가
-`POST /v1/admin/features`라 그 전에는 503으로 막힌다.
+**남은 순서 — 2026-09-06 기준 셋 다 수행됐다.**
+
+| 단계 | 결과 |
+|---|---|
+| (1) 플래그 활성화 | `KOR_TRAVEL_MAP_API_ADMIN_MANUAL_FEATURE_CREATE_ENABLED=true` (`/opt/kor-travel-docker-manager/.env`, 2026-09-05T20:27:59Z, 백업 `.env.bak-pre-m01-activation-20260905T202759Z`). `environment_sha256`이 바뀌므로 rebuild가 따라왔다 |
+| (2a) 거부 축 | `scripts/m01_activation_live_gate.py` — 잘못된 자격 조합 넷이 전부 **403**: 자격 없음 · admin proxy secret만(일반 AdminBFF) · create token만 · proxy secret + 틀린 create token. body는 **유효한 것**을 보낸다 — 422가 아니라 자격 때문에 거부됐음을 보이려면 body 검증보다 자격 검증이 먼저 돌아야 한다 |
+| (2b) zero-write 축 | 같은 스크립트가 거부 실행 전후로 witness 8관계(`feature.features`·`feature_places`·`feature_state_transitions`·`manual_feature_identity_claims`·`feature_creation_origins`·`ops.feature_overrides`·`domain_commands`·`domain_command_results`) count를 대조 — **증분 0** |
+| (2c) 성공 축 | 플래그가 켜져야 관측 가능하다고 적었던 그것이다. 배포 스택에서 `POST /v1/admin/features` → **201**(2026-09-05 실측). D2 lane이 매 실행 재관측한다 |
+| (3) D2 | 이제 503에 막히지 않는다. 잔여는 D2 자신의 lane 완주다 |
+
+**ACL 축은 rebuild 뒤에도 다시 측정했다.** §8.2가 "restore 뒤 동일"을 요구하므로 활성화
+rebuild 앞뒤로 각각 돌려 **두 번 다 55/55**였다. 즉 플래그 활성화가 ACL 계약을 흔들지
+않는다는 것이 값으로 남아 있다.
 
 **아직 이 배포에서 한 번도 돌지 않은 것.** backup 축은 저장소에 구현돼 있으나
 (`scripts/docker-backup.sh`가 4관계 count·PK 순 canonical JSONL SHA-256 root를 manifest에
