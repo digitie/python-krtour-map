@@ -382,6 +382,10 @@ run_executor() {
   local operation="$1"
   local artifact_dir="$2"
   local recovery_only="$3"
+  # funnel(`run_supervisor`)도 확인하지만 여기서 먼저 본다 — 아래 `mkdir`이 funnel보다
+  # 앞서므로, 확인이 funnel에만 있으면 미등록 operation이 root 소유 700 디렉터리를
+  # 남기고 죽는다(2026-09-06 적대 리뷰 실측).
+  assert_registered_operation "$operation"
   mkdir -- "$artifact_dir"
   chown 0:0 -- "$artifact_dir"
   chmod 700 -- "$artifact_dir"
