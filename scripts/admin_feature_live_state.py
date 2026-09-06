@@ -617,6 +617,7 @@ def _validate_c7_module(args: argparse.Namespace) -> None:
 _DIRECT_EXTRA_KEYS: Final[dict[str, frozenset[str]]] = {
     "seed": frozenset({"summary_run_ids"}),
     "api-audit": frozenset({"feature_uuids"}),
+    "purge": frozenset({"purged"}),
 }
 
 
@@ -655,6 +656,13 @@ def _validate_direct(path: Path, action: str, counts: dict[str, int], references
         if not isinstance(uuids, list) or any(
             not isinstance(value, str) or _UUID_RE.fullmatch(value) is None
             for value in uuids
+        ):
+            raise ValueError("direct evidence mismatch")
+    if action == "purge":
+        purged = payload["purged"]
+        if not isinstance(purged, dict) or any(
+            not isinstance(key, str) or type(value) is not int or value < 0
+            for key, value in purged.items()
         ):
             raise ValueError("direct evidence mismatch")
     return int(payload["foreign_key_constraints_checked"])
