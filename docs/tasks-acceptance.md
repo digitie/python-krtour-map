@@ -450,6 +450,22 @@ attestation v4와 pinned runtime manifest v6 + rebuild journal v8을 그대로 �
 4. 변이 검증: operation 이름·성공 status·feature_id 규칙을 각각 되돌리면 게이트가 red가
    된다.
 
+**새 operation을 더할 때 함께 고쳐야 하는 곳** (2026-09-06에 전부 CI 게이트가 됐다).
+`run_helper api-audit`을 더하면 `helper-api-audit` operation과 `direct-api-audit.json`
+(+ stderr sibling)이 생긴다. 그것은 네 곳에 동시에 반영돼야 한다:
+
+| 곳 | 무엇 | 안 고치면 |
+|---|---|---|
+| `run-admin-feature-live-acceptance.sh`의 `LANE_OPERATIONS` | 러너의 유일한 선언 | `run_supervisor`·`run_executor`가 실행 순간에 `die` — **즉시** 알게 된다 |
+| `admin_feature_live_state.py`의 해당 mode `required_operations` | lifecycle 파일 이름의 근거 | lane이 evidence 단계에서 죽는다 |
+| 같은 파일의 해당 mode `expected_names` | `direct-api-audit.json` + `.stderr` | 파일 집합 exact 대조에서 죽는다 |
+| 호출을 `recover_run`에도 두면 **recovery 쪽 두 집합** | normal/recovery는 별개 계약이다 | recovery 실행 한 번을 더 치른다 |
+
+뒤의 셋은 **스펙이 통과한 뒤에야** 검증되므로 배포 스택 실행 한 번씩을 먹는다. 그래서
+`tests/lint/test_lane_operations_are_declared_once.py`가 `run_new`/`recover_run` 각각의
+호출부에서 산출물 이름과 operation 집합을 유도해 검증기의 **두 집합과 각각 exact**
+대조한다 — CI에서 먼저 red가 난다. 착수할 때 그 게이트가 시키는 대로 함께 고쳐라.
+
 ## T-VN-PAIR-V2
 
 ```markdown
