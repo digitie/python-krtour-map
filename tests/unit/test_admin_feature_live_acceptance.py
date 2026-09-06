@@ -263,13 +263,26 @@ def test_clone_recovery_purge_uses_name_keyed_api_owned_identity() -> None:
     assert fixture_name == f"E2E TVN36 state fixture {run_id}"
     assert reason_prefix == f"tvn36-live-{run_id}"
 
-    # id는 서버가 발급한다(`_create_feature_id`). clone 러너의 content digest는
-    # 같은 규칙을 shell 안에서 재현하므로 두 파생이 일치해야 한다.
-    feature_id = _FIXTURE_MODULE._admin_fixture_feature_id(run_id)  # noqa: SLF001
-    raw = f"global|place|01070300|user_request|{fixture_name}:127.500000,36.500000|"
+    # id는 서버가 발급하고 그 자연키는 **서버 발급 uuid**다. 그래서 helper는
+    # 재계산하지 않고 관측된 행의 uuid로 **재현**한다. 정본은
+    # `admin_feature_repo.create_admin_manual_feature_with_initial_state`이고,
+    # 아래 raw는 그 호출과 같은 성분으로 손으로 짠 것이다 — 규칙이 갈라지면 red다.
+    feature_uuid = "01a07367-27ce-71af-89e5-d28c5b537109"
+    feature_id = _FIXTURE_MODULE._admin_fixture_feature_id(  # noqa: SLF001
+        feature_uuid, "place"
+    )
+    raw = f"global|place|manual_feature_v1|user_request|manual::{feature_uuid}|"
     assert feature_id == f"f_global_p_{hashlib.sha1(raw.encode()).hexdigest()[:16]}"
+    # 구 규칙(요청 category + name/좌표 자연키)은 다른 값을 낸다. M01 뒤로 그 대조는
+    # 항상 실패했고, `api-audit`이 한 번도 실행되지 않아 아무도 몰랐다.
+    stale = f"global|place|01070300|user_request|{fixture_name}:127.500000,36.500000|"
+    assert feature_id != f"f_global_p_{hashlib.sha1(stale.encode()).hexdigest()[:16]}"
     runner = _CLONE_RUNNER.read_text()
-    assert 'f"E2E TVN36 state fixture {run_id}:127.500000,36.500000",' in runner
+    # clone 러너는 더 이상 place id를 재계산하지 않는다 — 서버 발급 uuid를 밖에서
+    # 만들 수 없으므로 api-audit 증거에서 읽는다(같은 파일의 `owned_feature_uuids_sql`이
+    # 이미 그렇게 한다).
+    assert 'f"E2E TVN36 state fixture {run_id}:127.500000,36.500000",' not in runner
+    assert "owned_feature_ids_from_audit" in runner
     assert "e2e_live_acceptance::{run_id}::{role}" not in runner
 
     assert _FIXTURE_MODULE._provider_fixture_feature_id(  # noqa: SLF001

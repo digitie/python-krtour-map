@@ -239,25 +239,33 @@ def _admin_reason_prefix(run_id: str) -> str:
     return f"tvn36-live-{run_id}"
 
 
-def _admin_fixture_feature_id(run_id: str) -> str:
-    """서버가 발급할 ``feature_id``를 router와 같은 규칙으로 재계산한다.
+#: 서버가 manual Feature의 ``feature_id``를 만들 때 쓰는 category 리터럴.
+#: 요청 body의 category(``_ADMIN_FIXTURE_CATEGORY``)와 **다른 것**이다 — 전자는 id
+#: 유도의 성분이고 후자는 행의 업무 category다.
+_MANUAL_FEATURE_ID_CATEGORY: Final[str] = "manual_feature_v1"
 
-    감사 자체는 이 값을 소유권 키로 쓰지 않는다 — 정본은 이름이다. 그러나 clone
-    러너의 content digest는 run-owned 행을 **id 리터럴**로 제외해야 하고, 그
-    목록은 Feature를 hard purge한 뒤에도 유효해야 한다(전이 감사는 append-only라
-    남는다). 그래서 같은 규칙을 여기 한 곳에 두고 inspection에서 관측된 id와
-    대조한다 — router 규칙이 바뀌면 digest가 조용히 새는 대신 감사가 실패한다.
 
-    ``_create_feature_id``는 body에 ``idempotency_key``/``legal_dong_code``가
-    없을 때 ``{name}:{lon:.6f},{lat:.6f}``를 자연키로 쓴다.
+def _admin_fixture_feature_id(feature_uuid: str, kind: str) -> str:
+    """관측된 행의 ``feature_uuid``로 서버 규칙을 **재현**한다.
+
+    M01 이전에는 ``{name}:{lon:.6f},{lat:.6f}`` 자연키로 **재계산**했다. M01 뒤로
+    서버는 ``manual::{feature_uuid}``를 쓰고 그 uuid는 서버가 발급하는 랜덤
+    UUIDv7이라 run_id만으로는 원리적으로 재계산할 수 없다 — 그래서 그 대조는 항상
+    실패했고, `api-audit`/`purge` 경로가 한 번도 실행되지 않아 아무도 몰랐다
+    (2026-09-06 적대 리뷰).
+
+    재계산이 아니라 재현이므로 랜덤 uuid에도 성립하고, router 규칙이 바뀌면
+    여전히 실패한다 — 그것이 이 대조의 목적이다. 정본은
+    `admin_feature_repo.create_admin_manual_feature_with_initial_state`다.
     """
 
     return make_feature_id(
         bjd_code=None,
-        kind=_ADMIN_FIXTURE_KIND,
-        category=_ADMIN_FIXTURE_CATEGORY,
+        kind=kind,
+        category=_MANUAL_FEATURE_ID_CATEGORY,
         source_type="user_request",
-        source_natural_key=f"{_admin_fixture_name(run_id)}:{_LON:.6f},{_LAT:.6f}",
+        source_natural_key=f"manual::{feature_uuid}",
+        content_hash=None,
     )
 
 
@@ -1165,7 +1173,6 @@ async def _inspect_api_owned(
 
     fixture_name = _admin_fixture_name(run_id)
     reason_prefix = _admin_reason_prefix(run_id)
-    expected_feature_id = _admin_fixture_feature_id(run_id)
     rows = (
         await session.execute(
             text(_API_OWNED_FEATURE_SQL),
@@ -1178,6 +1185,10 @@ async def _inspect_api_owned(
     feature_uuid_by_id: dict[str, str] = {}
     for row in rows:
         feature_id = str(row["feature_id"])
+        # id는 행 자신의 uuid로 재현한다 — 서버 발급 uuid는 밖에서 재계산할 수 없다.
+        expected_feature_id = _admin_fixture_feature_id(
+            str(row["feature_uuid"]), str(row["kind"])
+        )
         if (
             feature_id != expected_feature_id
             or row["kind"] != _ADMIN_FIXTURE_KIND
@@ -1457,10 +1468,15 @@ def _expected_transition_chain(run_id: str) -> tuple[tuple[str, str], ...]:
 async def _audit_complete_api_owned(
     session: AsyncSession,
     run_id: str,
-) -> tuple[dict[str, int], dict[str, int], tuple[str, ...]]:
+) -> tuple[dict[str, int], dict[str, int], tuple[str, ...], tuple[str, ...]]:
     inspection = await _inspect_api_owned(session, run_id)
     expected_chain = _expected_transition_chain(run_id)
-    feature_id = _admin_fixture_feature_id(run_id)
+    # id 리터럴을 밖에서 만들지 않는다 — `_inspect_api_owned`가 각 행의 id를 그 행의
+    # uuid로 재현해 이미 대조했다. 여기서는 **소유 Feature가 정확히 하나**임을 보고
+    # 그 하나를 나머지 대조의 키로 쓴다.
+    if inspection.features != 1 or len(inspection.feature_ids) != 1:
+        raise RuntimeError("완료 API-owned 행 집합이 예상과 다릅니다")
+    (feature_id,) = inspection.feature_ids
     # 명령 수는 spec이 실제로 보내는 mutation 수에서 유도한다: create 1건 +
     # state PATCH 2건. GET은 domain command를 만들지 않고, 마지막 cleanup도
     # 이미 retired면 명령을 만들지 않는다.
@@ -1468,9 +1484,7 @@ async def _audit_complete_api_owned(
         {_ADMIN_CREATE_OPERATION: 1, _ADMIN_STATE_OPERATION: 2}
     )
     if (
-        inspection.features != 1
-        or inspection.feature_ids != (feature_id,)
-        or inspection.transition_chains != {feature_id: expected_chain}
+        inspection.transition_chains != {feature_id: expected_chain}
         or inspection.state_transitions != len(expected_chain)
         # create가 만드는 field override 6개 + retire가 만드는 lifecycle override 1개.
         or inspection.override_field_paths != _EXPECTED_OVERRIDE_FIELD_PATHS
@@ -1488,6 +1502,7 @@ async def _audit_complete_api_owned(
         },
         inspection.foreign_keys,
         inspection.feature_uuids,
+        inspection.feature_ids,
     )
 
 
@@ -1702,6 +1717,7 @@ async def _run(
             async with AsyncSession(bind=connection) as session, session.begin():
                 summary_run_ids: tuple[int, int] | None = None
                 api_owned_feature_uuids: tuple[str, ...] = ()
+                api_owned_feature_ids: tuple[str, ...] = ()
                 if action == "seed":
                     counts, foreign_keys, summary_run_ids = await _seed(session, run_id)
                 elif action == "cleanup":
@@ -1716,6 +1732,7 @@ async def _run(
                         counts,
                         foreign_keys,
                         api_owned_feature_uuids,
+                        api_owned_feature_ids,
                     ) = await _audit_complete_api_owned(session, run_id)
                 elif action == "auth-reset":
                     auth_counts = await _reset_auth_audit(session, run_id)
@@ -1747,10 +1764,13 @@ async def _run(
             raise AssertionError("seed summary receipt result disappeared")
         result["summary_run_ids"] = list(summary_run_ids)
     if action == "api-audit":
-        # clone 러너의 content digest는 run-owned ``ops.domain_commands`` receipt를
-        # 제외해야 한다. 그 표에는 feature 열이 없고 terminal response가 담는
-        # 식별자는 **feature UUID**뿐이라, 감사가 관측한 UUID를 evidence로 넘긴다.
+        # clone 러너의 content digest는 run-owned 행을 제외해야 한다.
+        # ``ops.domain_commands``에는 feature 열이 없고 terminal response가 담는
+        # 식별자는 **feature UUID**뿐이라 관측한 UUID를 넘긴다. 그리고 M01 뒤로
+        # place Feature의 ``feature_id``도 서버 발급 uuid를 자연키로 쓰므로 밖에서
+        # 재계산할 수 없다 — 그것도 함께 넘긴다.
         result["feature_uuids"] = list(api_owned_feature_uuids)
+        result["feature_ids"] = list(api_owned_feature_ids)
     if action == "purge":
         result["purged"] = purged
     return result

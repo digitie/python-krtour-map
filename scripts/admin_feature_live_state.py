@@ -18,6 +18,8 @@ _RUN_ID_RE: Final[re.Pattern[str]] = re.compile(r"^[a-z0-9][a-z0-9-]{15,79}$")
 _COMMIT_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{64}$")
 _IMAGE_ID_RE: Final[re.Pattern[str]] = re.compile(r"^sha256:[0-9a-f]{64}$")
+#: `f_global_p_<16 hex>` — `make_feature_id`의 산출 형태
+_FEATURE_ID_RE: Final[re.Pattern[str]] = re.compile(r"^f_global_[a-z]_[0-9a-f]{16}$")
 _UUID_RE: Final[re.Pattern[str]] = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 )
@@ -616,7 +618,7 @@ def _validate_c7_module(args: argparse.Namespace) -> None:
 #: (2026-09-06 실측).
 _DIRECT_EXTRA_KEYS: Final[dict[str, frozenset[str]]] = {
     "seed": frozenset({"summary_run_ids"}),
-    "api-audit": frozenset({"feature_uuids"}),
+    "api-audit": frozenset({"feature_ids", "feature_uuids"}),
     "purge": frozenset({"purged"}),
 }
 
@@ -656,6 +658,16 @@ def _validate_direct(path: Path, action: str, counts: dict[str, int], references
         if not isinstance(uuids, list) or any(
             not isinstance(value, str) or _UUID_RE.fullmatch(value) is None
             for value in uuids
+        ):
+            raise ValueError("direct evidence mismatch")
+        ids = payload["feature_ids"]
+        # id는 서버가 uuid를 자연키로 발급하므로 밖에서 재계산할 수 없다. 형태와
+        # **uuid와 같은 개수**만 본다 — 값의 정합은 helper가 관측 시점에 재현해
+        # 대조했다(`_admin_fixture_feature_id`).
+        if (
+            not isinstance(ids, list)
+            or len(ids) != len(uuids)
+            or any(_FEATURE_ID_RE.fullmatch(value) is None for value in ids)
         ):
             raise ValueError("direct evidence mismatch")
     if action == "purge":
@@ -786,6 +798,8 @@ def _validate_evidence(args: argparse.Namespace) -> None:
     if args.mode == "normal":
         expected_names = {
             "cursor-probe.json",
+            "direct-api-audit.json",
+            "direct-api-audit.json" + _HELPER_STDERR_SUFFIX,
             "direct-audit.json",
             "direct-audit.json" + _HELPER_STDERR_SUFFIX,
             "direct-cleanup.json",
@@ -813,6 +827,7 @@ def _validate_evidence(args: argparse.Namespace) -> None:
         required_operations = {
             "executor-main",
             "executor-recovery",
+            "helper-api-audit",
             "helper-audit",
             "helper-cleanup",
             "helper-seed",
@@ -829,6 +844,8 @@ def _validate_evidence(args: argparse.Namespace) -> None:
         actor = "main"
     else:
         expected_names = {
+            "direct-api-audit.json",
+            "direct-api-audit.json" + _HELPER_STDERR_SUFFIX,
             "direct-audit.json",
             "direct-audit.json" + _HELPER_STDERR_SUFFIX,
             "direct-cleanup.json",
@@ -836,7 +853,12 @@ def _validate_evidence(args: argparse.Namespace) -> None:
             "lifecycle",
             "playwright-recovery",
         }
-        required_operations = {"executor-recovery", "helper-audit", "helper-cleanup"}
+        required_operations = {
+            "executor-recovery",
+            "helper-api-audit",
+            "helper-audit",
+            "helper-cleanup",
+        }
         actor = "recovery"
     if {path.name for path in runtime.iterdir()} != expected_names:
         raise ValueError("evidence exact file set mismatch")
@@ -851,6 +873,21 @@ def _validate_evidence(args: argparse.Namespace) -> None:
         "audit",
         {"features": 0, "price_values": 0, "weather_values": 0},
         0,
+    )
+    # api-audit은 admin API가 만든 Feature의 **완료 상태**를 감사한다. fixture 감사와
+    # counts 모양이 다르다 — 소유 Feature 1건, 그 위의 domain command 3건(create 1 +
+    # state PATCH 2), field override 7개(create 6 + retire 1), 전이 3건. FK reference
+    # 8은 2026-09-06에 배포 스택에서 직접 측정했다.
+    _validate_direct(
+        runtime / "direct-api-audit.json",
+        "api-audit",
+        {
+            "domain_commands": 3,
+            "features": 1,
+            "field_overrides": 7,
+            "state_transitions": 3,
+        },
+        8,
     )
     _validate_report(runtime / "playwright-recovery")
     phases: dict[str, set[str]] = {}
