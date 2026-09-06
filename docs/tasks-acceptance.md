@@ -587,13 +587,38 @@ downstream 사용처를 먼저 세어야 한다(`scripts/m05_activation_attestat
    startup `ValueError`로 거부하며 이유를 스스로 적는다 — "root-owned final C7 enable
    boundary가 구현될 때까지". 그 boundary는 **Manager 저장소에 없다**(Manager 전체에서
    `CACHE_TARGET`은 5개 파일뿐이고 전부 inert 기본값의 정의·검증·생성 상수다).
-3. **구조적 순환 — 소유자 판정이 필요하다.** cache-target을 켜면 `.env` 바이트가 바뀌어
-   `environment_sha256`이 달라지고 v8 journal 결박이 깨진다. 그런데 다시 rebuild하려면
-   Manager `require_rebuildable_mode`가 요구하는 `_REBUILDABLE_CACHE_TARGET_DEFAULTS`(정확히
-   그 inert 값들)를 만족해야 한다. **현 lifecycle(rehearsal/rebuildable)에서 enable과 pinned
-   rebuild는 상호배타다.** 셋 중 하나가 필요하다 — (a) lifecycle을 옮긴다, (b) Manager가
-   cache-target 축을 `environment_sha256` 결박에서 분리한다, (c) enable을 실 production 전환
-   시점까지 미룬다.
+3. **구조적 순환 — 2026-09-07 소유자 판정으로 (c)를 택했다.** cache-target을 켜면 `.env`
+   바이트가 바뀌어 `environment_sha256`이 달라지고 v8 journal 결박이 깨진다. 그런데 다시
+   rebuild하려면 Manager `require_rebuildable_mode`가 요구하는
+   `_REBUILDABLE_CACHE_TARGET_DEFAULTS`(정확히 그 inert 값들)를 만족해야 한다. **현
+   lifecycle(rehearsal/rebuildable)에서 enable과 pinned rebuild는 상호배타다.**
+
+   | 선택지 | 대가 | 판정 |
+   |---|---|---|
+   | (a) lifecycle을 옮긴다 | pinned rebuild 능력을 잃는다 | 채택 안 함 |
+   | (b) Manager가 cache-target 축을 `environment_sha256` 결박에서 분리한다 | Manager 계약 변경 | 채택 안 함 |
+   | (c) **enable을 실 production 전환 시점까지 미룬다** | 41C가 그때까지 보류 | **채택** |
+
+   따라서 41C는 **보류**다. n150은 실 production이 아니고 rehearsal/rebuildable lifecycle의
+   rebuild 능력이 D1/D2/M01 계열의 실행 수단이므로, 그것을 잃으면서 아직 소비자가 없는
+   흐름을 켜는 것은 값이 맞지 않는다. 같은 형식의 선례가 원장에 있다 — `T-VN-H43`이
+   "n150은 실 production이 아니며 손상 시 재적재가 정책"이라는 이유로 보류다.
+
+**재개 조건과 그때의 순서.** 실 production 전환이 결정되면 이 절을 그대로 다시 세운다.
+남은 다섯 조각은 이렇다:
+
+1. Manager가 cache-target env를 컨테이너에 렌더링한다(현재 `.env`의 10개 키가 어느 compose
+   `environment:` 블록에도 매핑돼 있지 않다).
+2. Map `KOR_TRAVEL_MAP_API_CACHE_TARGET_SERVICE_PRINCIPALS`에 4역할 registry를 넣는다.
+3. PinVi가 기다리는 **root-owned final C7 enable boundary**를 Manager에 구현한다 — 그것이
+   없으면 PinVi config가 production에서 sync enable을 startup `ValueError`로 거부한다.
+4. PinVi `..._CACHE_TARGET_SYNC_ENABLED`를 켜고 4역할 토큰·3핀을 준다.
+5. 그 뒤에 acceptance 다섯 축(누락·중복·restore epoch 전환 live 증명, 호출 cadence)을
+   측정한다. 클라이언트측 코드는 이미 있다 — 남은 것은 live 증거이지 구현이 아니다.
+
+**보류 중 유지되는 사실.** relay·reconciliation 구현은 회귀 없이 유지돼야 한다. 그것을
+지키는 것은 저장소의 unit/integration 테스트이고, 배포 런타임에서는 ops read 표면이
+살아 있어 relay 관계 19개가 0행임을 언제든 확인할 수 있다.
 
 **정정할 두 문장.**
 

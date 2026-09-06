@@ -16,20 +16,16 @@
 
 ### 다음 한 작업
 
-**`T-VN-41C`의 구조적 순환에 대한 소유자 판정.** 선행 배리어는 전부 닫혔다(D1·D2·
-`T-VN-41F1D-E`·`T-VN-M01`). 41C의 relay·reconciliation은 **구현이 끝나 있고**, 남은 셋 중
-앞의 둘은 셋째가 풀리기 전에 착수할 수 없다:
+**`T-VN-PAIR-V2`** — PinVi의 M05 pair 계약을 v2로 올려 **Map revision의 이중 선언을
+없앤다.** 41C는 2026-09-07 소유자 판정으로 **보류**다(실 production 전환까지 enable 유예 —
+현 lifecycle에서 enable과 pinned rebuild가 상호배타라 rebuild 능력을 잃는 값이 맞지 않다).
 
-1. **런타임 결선** — 배포 Map 컨테이너에 `..._CACHE_TARGET_SERVICE_PRINCIPALS`가 없어
-   service 표면이 401이고 relay 관계 19개가 전부 0행이다.
-2. **enable 경계 구현** — PinVi가 production에서 sync enable을 거부하며, 그 조문이
-   기다리는 "root-owned final C7 enable boundary"가 Manager에 없다.
-3. **구조적 순환** — 켜면 `environment_sha256`이 바뀌어 rebuild가 필요한데, Manager
-   `require_rebuildable_mode`는 cache-target 값이 inert여야 rebuild를 허용한다. **현
-   lifecycle에서 enable과 pinned rebuild는 상호배타다.**
-
-셋 중 하나를 골라야 한다 — (a) lifecycle을 옮긴다, (b) Manager가 cache-target 축을
-`environment_sha256` 결박에서 분리한다, (c) enable을 실 production 전환 시점까지 미룬다.
+PAIR-V2를 다음으로 두는 이유는 **비용을 이미 값으로 치렀기 때문**이다. 2026-09-06 하루에만
+Map 변경 두 번에 PinVi 재핀 두 번이 강제됐고 각각이 full rebuild를 끌고 왔다 — Map이 한
+줄만 바뀌어도 PinVi 커밋이 필요한 것이 v1 계약의 이중 선언 때문이다(`AGENTS.md` DO NOT 15).
+Manager는 이미 v1·v2를 dual-read하고 PinVi 생성기도 이미 v2를 계산한다. 막고 있는 것은
+**소비자** 하나다 — `apps/api/app/core/config.py`가 모듈 스코프에서 `version == 1`을
+단언해서 계약만 뒤집으면 API 컨테이너가 import에서 죽는다(2026-09-05 실측).
 
 `GM-17`은 소유자 지시로 **가장 마지막**이다.
 
