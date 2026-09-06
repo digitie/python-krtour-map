@@ -1,21 +1,24 @@
 # resume.md — 현재 진척도와 다음 한 작업
 
-## 2026-09-06 — M01 활성화 완료, D2는 증거 계약 마지막 하나까지 닫고 재실행 대기
+## 2026-09-06 — D2 통과, receipt 승격
 
 | 항목 | 상태 |
 |---|---|
 | `T-VN-M01` 활성화 | **완료** — ACL 55/55(rebuild 앞뒤 두 번) · 거부 축 4/4 403 · witness 8관계 zero-write · 성공 축 201 |
 | kill-switch | `KOR_TRAVEL_MAP_API_ADMIN_MANUAL_FEATURE_CREATE_ENABLED=true` (2026-09-05T20:27:59Z) |
 | D2 스펙 | **in-lane 통과** — main·recovery 각 `{"counts":{"passed":2},"result":"passed"}` |
-| D2 잔여 | 증거 계약 결함 열둘을 순서대로 닫았다. 마지막(`summary_run_ids`)은 #1166 |
+| `T-VN-41F1D-D2` | **통과** — `phase: passed` / `status: complete` (2026-09-06T01:47:03Z, runner exit 0, 1분 43초) |
+| D2 증거 | `phase: evidence-validated` — 파일 집합 exact(10), lifecycle 48, FK 제약 18, 리포트 2 |
+| D2 잔여물 | 독립 측정으로 0 — acceptance 소유 row 0, 라벨 컨테이너 0, BLOCKED/ACTIVE/RESULT 없음 |
+| 선행 축 | 같은 pinset에서 ACL preflight 55/55 · D1 11 passed(29.9초) |
 | 게이트 | 결함마다 `tests/lint/` 탐지기, 전부 변이로 red 확인 |
 | pinset | Map `ab3640f8` + PinVi #535 — rebuild `48166bd2…`, generation `56d331a7…` |
 
 ### 다음 한 작업
 
-**그 pinset에서 D2를 완주시킨다.** executor 이미지 재빌드 → 스냅샷 재설치(repin) →
-ACL preflight 재측정 → D1 → D2 순이고 전 과정이 스크립트로 남아 있다. D2가 `passed`를
-쓰면 receipt 승격이 따라온다.
+**`T-VN-41C`** — relay·reconciliation·consumer enable. acceptance가 아니라 **구현이
+먼저다**(2026-09-04 재분류): reconciliation 구현이 남아 있고, cache-target 1-b/1-c는 현
+런타임에 env/principal이 하나도 없으며, 1-a는 production 호출자가 0건이다.
 
 그 뒤 순서는 `T-VN-41C` → `T-VN-41F1D-E`다. `GM-17`은 소유자 지시로 **가장 마지막**이다.
 `T-VN-D2-API-AUDIT`(helper의 `api-audit`/`purge` 경로가 한 번도 실행된 적 없음)은 D2 완주와
