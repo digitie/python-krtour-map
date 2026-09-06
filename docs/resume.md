@@ -20,12 +20,20 @@
 없앤다.** 41C는 2026-09-07 소유자 판정으로 **보류**다(실 production 전환까지 enable 유예 —
 현 lifecycle에서 enable과 pinned rebuild가 상호배타라 rebuild 능력을 잃는 값이 맞지 않다).
 
-PAIR-V2를 다음으로 두는 이유는 **비용을 이미 값으로 치렀기 때문**이다. 2026-09-06 하루에만
-Map 변경 두 번에 PinVi 재핀 두 번이 강제됐고 각각이 full rebuild를 끌고 왔다 — Map이 한
-줄만 바뀌어도 PinVi 커밋이 필요한 것이 v1 계약의 이중 선언 때문이다(`AGENTS.md` DO NOT 15).
-Manager는 이미 v1·v2를 dual-read하고 PinVi 생성기도 이미 v2를 계산한다. 막고 있는 것은
-**소비자** 하나다 — `apps/api/app/core/config.py`가 모듈 스코프에서 `version == 1`을
-단언해서 계약만 뒤집으면 API 컨테이너가 import에서 죽는다(2026-09-05 실측).
+PAIR-V2를 다음으로 두는 이유는 **비용을 이미 값으로 치렀기 때문**이다. 2026-09-01 이후
+Map 변경으로 강제된 PinVi 재핀은 **12건**이고 **12건 전부가 rebuild를 끌고 왔다**. 그중
+**10건은 상류 admin OpenAPI가 바이트 동일한 채 revision 라벨만 옮긴 것**이다(상류 blob
+sha256이 12개 핀에 걸쳐 두 값뿐이었다). 2026-09-06 하루만 봐도 4건이다 — 이 줄이 종전에
+"두 번"이라 적었던 것은 오기다(2026-09-07 실측 정정).
+
+Manager는 이미 v1·v2를 dual-read하고 **그것이 n150에도 배포돼 있다**. PinVi 생성기도 이미
+v2를 계산하지만 `_in_committed_envelope`가 커밋된 v1 봉투로 되돌린다 — 그 되돌림은 커밋된
+JSON이 v2가 되는 순간 **스스로 무장해제**되므로 생성기 변경은 순서상 마지막이다.
+
+막고 있는 것은 **소비자 셋**이다(원장이 종전에 하나라고 적었다):
+`apps/api/app/core/config.py`(모듈 스코프 `version == 1` — 계약만 뒤집으면 컨테이너가
+**기동에 실패**한다, 실측 재현), `scripts/m05_activation_attestation.py`,
+`scripts/m05_activation_receipt.py`.
 
 `GM-17`은 소유자 지시로 **가장 마지막**이다.
 
