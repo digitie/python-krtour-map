@@ -576,6 +576,35 @@ surface마다 `source_revision`을 요구한다. 계약만 뒤집으면 PinVi AP
 downstream 사용처를 먼저 세어야 한다(`scripts/m05_activation_attestation.py`,
 `apps/api/tests/unit/test_m05_*`).
 
+**진행 상황 (2026-09-07).**
+
+| 항목 | 상태 |
+|---|---|
+| §1 소비자 dual-read | **완료** — PinVi #538. `config.py`가 v1·v2를 함께 읽고, v2에서 사라지는 두 값의 downstream은 **조용히 건너뛰지 않고** 무엇을 배선해야 하는지 이름을 대며 fail-close한다 |
+| §2 v1 계약 그대로 기동 | **완료** — pinset `78cad481…`로 rebuild 후 배포 컨테이너에서 직접 확인: `pinvi-api` running healthy, `envelope version = 1`, revision·image digest 존재. 같은 배포 이미지가 v2 봉투도 읽는다(`version=2`, `image_digests={}`, revision 전부 `None`) |
+| §3 계약 v2 재생성 | **선행 하나가 남았다**(아래) — 생성기 산출물 자체는 확인했다: version 2, `runtime_image_digests` 제거, `source_revision` 0건, digest 16개 무변경 |
+| §4~§7 | 미착수 |
+
+**§3에 해제 조건이 적지 않은 선행이 있다 — 2026-09-07 실측.** 원장은 소비자를 하나로
+보고 "그 뒤에 계약을 v2로 재생성한다"고 적었다. 그런데 소비자는 셋이고, 그중
+`scripts/m05_activation_attestation.py`는 `source_revision`을 **`git show <rev>:<path>`의
+revision 인자**로 쓴다(`:1543`·`:1702`·`:1722`, 함수 `_hash_source_openapi`·
+`_runtime_map_openapi`). 계약에서 그 필드를 빼면 그 값을 **줄 사람이 없다.**
+
+따라서 계약을 먼저 v2로 올리면 M05 활성화와 §6의 격리 e2e가 깨진다. 계약 전환의 실제
+선행은 **생산자 배선**이다:
+
+1. `m05_activation_attestation.py`의 두 함수가 Map source revision을 **인자로** 받는다.
+   v2 계약이면 그 인자가 필수이고, 없으면 fail-close한다(§1과 같은 규율).
+2. `main`이 그 값을 **격리 envelope**에서 넘긴다 — `_load_isolated_runtime_provenance`가
+   읽는 그 문서에 `map.source_revision`이 이미 있고(`:586-591`), 그것은 Manager가 pin
+   registry에서 만든 값이다. 즉 대체 생산자가 **이미 존재**하고 배선만 없다.
+3. `scripts/m05_activation_receipt.py`도 봉투 dual-read로 맞춘다(그쪽은 pair 계약의
+   `source_revision`을 쓰지 않는다 — 봉투 판정만 v1을 요구한다).
+
+이 배선이 끝나야 §3이 안전하다. 배선 뒤에는 `map.full.source_revision`의 이중 선언이
+**실제로** 사라진다 — 값이 pin registry 한 곳에서만 나오기 때문이다.
+
 **해제 조건.**
 
 1. 소비자 이행이 먼저다. `apps/api/app/core/config.py`가 v1·v2를 **함께** 읽고, v2에서는
