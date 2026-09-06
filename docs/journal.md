@@ -1,6 +1,6 @@
 # journal.md — 작업 일지 (역시간순)
 
-## 2026-09-06 — M01을 활성화했고, D2는 스펙이 아니라 **증거 계약**에서 열두 번 걸렸다
+## 2026-09-06 — D2가 닫혔다. 스펙이 아니라 **증거 계약**에서 열두 번 걸렸던 것
 
 `T-VN-41F1D-D2`가 오래 진전이 없던 이유를 근본에서 보면 두 겹이었다.
 
@@ -60,6 +60,34 @@ M01의 활성화 전제 셋 중 restore 축은 **수행 가능한 형태가 아�
 
 자기검사도 동어반복("필드가 있다")에서 전제 확인(모델 계열이 실제로 `extra="forbid"`인가)
 으로 바꿨다. 전제가 무너지면 이 대조 전체가 의미를 잃으므로 red로 알려야 한다.
+
+### 4. 그래서 닫혔다
+
+pinset `48166bd2…`(Map `ab3640f8` + PinVi `f72eedf1`)에서 lane이 `phase: passed` /
+`status: complete`로 끝났다(2026-09-06T01:47:03Z, runner exit 0, 1분 43초).
+
+    스펙      main·recovery 각 {"counts":{"passed":2},"result":"passed"}
+    evidence  phase=evidence-validated  파일집합 exact(10) lifecycle 48 FK제약 18 리포트 2
+    cleanup   direct-cleanup·direct-audit 모두 features/price_values/weather_values 0, FK 0
+    잔여물    lane과 독립으로 재측정 — 소유 row 0, 라벨 컨테이너 0, afla 이름 컨테이너 0
+    선행      ACL preflight 55/55 · D1 11 passed(29.9초), 같은 pinset
+
+lane의 자기 신고를 그대로 받지 않고 잔여물을 **따로** 셌다. `SET ROLE
+ktm_feature_schema_owner` 없이는 `permission denied for schema feature`가 난다 —
+Map 역할이 전부 NOINHERIT이라 그렇다. 그 자체가 M01 ACL 계약이 살아 있다는 증거다.
+
+남긴 것 하나: `feature.features` 전체가 1건인데 그것은 2026-09-05 내 422 격리 probe가
+만든 Feature다. `suppressed`로 눌러 뒀고 hard purge는 `T-VN-M02`까지 fence돼 있어
+지우지 않는다. acceptance 소유 row는 0이다.
+
+### 다음 결함을 미리 깨뜨리는 게이트
+
+이번 비용의 정체는 "계약 위반이 스펙 통과 뒤에만 보인다"였다. 그래서 그 대조를
+CI로 끌어왔다 — `tests/lint/test_lane_operations_are_declared_once.py`가 러너 호출부에서
+`$RUNTIME_DIR` 산출물 이름과 operation 집합을 유도해 검증기와 exact 대조한다.
+stderr 접미사는 검증기 상수가 아니라 supervisor(파일을 실제로 만드는 쪽)에서 읽는다 —
+두 소비자를 서로 대조하면 둘이 같이 틀려도 green이기 때문이다. 같은 커밋에서
+`assert_container_residue_zero`의 operation 목록 이중 선언도 없앴다.
 
 
 ## 2026-09-05 — 새 DB가 helper의 미결박 가정 셋을 한꺼번에 드러냈다

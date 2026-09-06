@@ -10,6 +10,35 @@
 > | 2026-07-27 ~ 2026-07-31 | [archive/tasks-done-2026-07a.md](archive/tasks-done-2026-07a.md) |
 > | ~ 2026-07-26 (C7·Admin) | [archive/tasks-done-2026-07b.md](archive/tasks-done-2026-07b.md) |
 
+## T-VN-41F1D-D2 — data-dependent admin live E2E (2026-09-06 완료)
+
+- [x] T-VN-41F1D-D2 — 배포 스택에서 lane이 `phase: passed` / `status: complete`로 닫혔다
+  (2026-09-06T01:47:03Z, runner exit 0, 1분 43초). pinset `48166bd2…` = Map `ab3640f8` +
+  PinVi `f72eedf1`, host attestation `5b7f91ea…`, C7 executor 이미지 `sha256:337d9f77…`
+  (라벨 `ab3640f8`), pinned runtime manifest `6ed900f5…`, rebuild journal `4cf269c4…`.
+
+  | 축 | 값 |
+  |---|---|
+  | 스펙 | main·recovery 각 `{"counts":{"passed":2},"result":"passed"}`, 2/2 planned=observed |
+  | evidence | `phase: evidence-validated` — 파일 집합 exact(10), lifecycle 48, FK 제약 18, 리포트 2 |
+  | cleanup | `direct-cleanup`/`direct-audit` 모두 features·price_values·weather_values 0, FK reference 0 |
+  | 잔여물 | lane 종료 후 **독립 측정**: acceptance 소유 row 0(features/aliases/places), acceptance 라벨 컨테이너 0, `kor-travel-map-afla-*` 0 |
+  | lane 상태 | `BLOCKED.json`·`RESULT.json`·`ACTIVE.json` 모두 없음 |
+
+  선행 축도 같은 pinset에서 재측정했다 — M01 ACL preflight **55/55**, D1 **11 passed**(29.9초).
+
+  **왜 오래 걸렸나.** 두 겹이었다. (1) 해제 조건에 없던 `T-VN-M01` 활성화 의존 —
+  스펙의 첫 write가 `POST /v1/admin/features`인데 kill-switch가 `false`였다.
+  (2) `_validate_evidence`가 **스펙 통과 뒤에만** 도는 구조 — 계약 위반이 병렬로
+  보이지 않고 배포 스택 실행 한 번에 하나씩 직렬로 드러난다. 그렇게 결함 열둘을
+  지났고 그때마다 `tests/lint/`에 유도-결박-탐지 게이트를 남겼다. 상세는
+  `docs/journal.md` 2026-09-06.
+
+  **남긴 debt.** 수동 생성 Feature 1건(내 2026-09-05 422 격리 probe가 만든 것)이
+  `suppressed`로 남아 있다 — hard purge는 `T-VN-M02`까지 fence돼 있어 지우지 않는다.
+  helper의 `api-audit`/`purge` 경로는 여전히 이 lane이 부르지 않으며
+  `T-VN-D2-API-AUDIT`가 소유한다.
+
 ## T-VN-41F1D-D1 — 최종 격리 리허설·provenance attestation (2026-09-04 완료)
 
 - [x] T-VN-41F1D-D1 — 여섯 요구가 전부 현 candidate `e6b52db4`에서 충족됐다.

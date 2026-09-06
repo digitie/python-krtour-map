@@ -351,7 +351,7 @@ attestation v4와 pinned runtime manifest v6 + rebuild journal v8을 그대로 �
 ## T-VN-41F1D-D2
 
 ```markdown
-- [ ] **T-VN-41F1D-D2 — data-dependent admin/PinVi live E2E** *(공동, docs-only)*
+- [x] **T-VN-41F1D-D2 — data-dependent admin/PinVi live E2E** *(공동, docs-only)*
 
   > D1/F1D-E와 `T-VN-FINAL-REBUILD` current-candidate 확인 뒤에 실행한다. H46H baseline 완료만으로
   > 이 data-dependent acceptance를 완료 처리하지 않는다.
@@ -389,10 +389,12 @@ attestation v4와 pinned runtime manifest v6 + rebuild journal v8을 그대로 �
     root-only DSN을 browser/API route에 넘기지 않음, 종료 시 소유 row 0건 확인)은 **그대로 유지한다.**
     바뀐 것은 대상 DB의 분류뿐이다.
 
-  **아직 열린 판정**: 런북 §1의 fixture 소유 모델(8-ID, place 6 + weather/price 2)은 2026-07-20
-  계약이고 실제 spec은 2026-08-09~12에 **단수 name-keyed**(API 1 + helper 2, ID는 서버 발급)로
-  재작성됐다. `fixed`/`run_scoped_owned` mode 결박도 코드에 0건이다. 원장과 구현 중 어느 쪽을
-  정본으로 삼을지는 아직 판정되지 않았다 — 착수 전에 정해야 한다.
+  **열린 판정 해소 (2026-09-06, 실행으로).** 런북 §1의 fixture 소유 모델(8-ID, place 6 +
+  weather/price 2)은 2026-07-20 계약이고 실제 spec은 2026-08-09~12에 **단수 name-keyed**
+  (API 1 + helper 2, ID는 서버 발급)로 재작성됐다. `fixed`/`run_scoped_owned` mode 결박은
+  코드에 0건이다. 2026-09-06 통과 실행이 **구현 쪽 모델로** 닫혔다 — 소유 ID 8건을
+  `owned_feature_id_sha256`으로 기록하고 종료 시 전부 0으로 회수했다. 따라서 정본은
+  구현이다. 런북 §1의 8-ID 문장은 그 기술(記述)로 남고 결박은 아니다.
 
   fixture manifest에는 source/seed identity와 checksum, 허용 ID 목록, active generation,
   v6 manifest digest, v8 journal/host-attestation digest, exact Map/PinVi pair SHA, 일곱 image
