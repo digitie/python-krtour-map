@@ -125,11 +125,12 @@ def _wire_name(statement: ast.AnnAssign, attribute: str) -> str:
     call = _field_call(statement)
     if call is not None:
         for keyword in call.keywords:
-            if keyword.arg in {"alias", "validation_alias"} and isinstance(
-                keyword.value, ast.Constant
+            if (
+                keyword.arg in {"alias", "validation_alias"}
+                and isinstance(keyword.value, ast.Constant)
+                and isinstance(keyword.value.value, str)
             ):
-                if isinstance(keyword.value.value, str):
-                    return keyword.value.value
+                return keyword.value.value
     return attribute
 
 
@@ -285,7 +286,7 @@ def _object_keys(text: str, opening: int) -> set[str]:
     keys: set[str] = set()
     for line in block.splitlines()[1:]:
         stripped = line.strip()
-        if not stripped or stripped.startswith("//") or stripped.startswith("*"):
+        if not stripped or stripped.startswith(("//", "*")):
             continue
         match = _SPEC_KEY_LINE.match(line)
         if match is None:
