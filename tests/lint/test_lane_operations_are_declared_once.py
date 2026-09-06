@@ -26,6 +26,8 @@ pytestmark = pytest.mark.unit
 
 _ROOT = Path(__file__).resolve().parents[2]
 _RUNNER = _ROOT / "scripts" / "run-admin-feature-live-acceptance.sh"
+_STATE = _ROOT / "scripts" / "admin_feature_live_state.py"
+_SUPERVISOR = _ROOT / "scripts" / "admin_feature_live_supervisor.py"
 
 _DECLARATION = re.compile(
     r"^readonly LANE_OPERATIONS=\(\n(?P<body>.*?)^\)$", re.MULTILINE | re.DOTALL
@@ -128,3 +130,142 @@ def test_the_launcher_binds_the_declaration_at_runtime() -> None:
     guard_start = source.index("assert_registered_operation() {")
     guard = source[guard_start : source.index("\n}", guard_start)]
     assert "die " in guard, "등록 확인이 실패해도 죽지 않는다 — 확인이 아니라 장식이다"
+
+
+#: `run_helper cleanup "$RUNTIME_DIR/direct-cleanup.json"`
+_HELPER_OUTPUT = re.compile(
+    r'^\s*run_helper\s+[a-z][a-z0-9-]*\s+"\$RUNTIME_DIR/(?P<name>[A-Za-z0-9._-]+)"',
+    re.MULTILINE,
+)
+#: `run_executor executor-main "$RUNTIME_DIR/playwright-main" 0`
+_EXECUTOR_OUTPUT = re.compile(
+    r'^\s*run_executor\s+[a-z][a-z0-9-]*\s+"\$RUNTIME_DIR/(?P<name>[A-Za-z0-9._-]+)"',
+    re.MULTILINE,
+)
+#: `--output "$RUNTIME_DIR/cursor-probe.json"`
+_PROBE_OUTPUT = re.compile(
+    r'^\s*--output\s+"\$RUNTIME_DIR/(?P<name>[A-Za-z0-9._-]+)"', re.MULTILINE
+)
+#: 검증기의 normal/recovery 파일 집합 리터럴
+_EXPECTED_BLOCK = re.compile(
+    r"expected_names = \{(?P<body>.*?)\n        \}", re.DOTALL
+)
+_EXPECTED_ENTRY = re.compile(r'"(?P<name>[A-Za-z0-9._-]+)"')
+
+
+def _state_source() -> str:
+    return _STATE.read_text(encoding="utf-8")
+
+
+#: `_write_root_only_file(f"{self.args.output}.stderr", log.stderr)`
+_STDERR_SIBLING = re.compile(
+    r'_write_root_only_file\(\s*f"\{self\.args\.output\}(?P<suffix>[A-Za-z0-9._-]+)"'
+)
+
+
+def _supervisor_stderr_suffix() -> str:
+    """supervisor가 helper 출력 옆에 붙이는 접미사를 **생산자에서** 읽는다.
+
+    검증기 상수(`_HELPER_STDERR_SUFFIX`)를 읽으면 두 소비자를 서로 대조하는 꼴이라
+    둘이 같이 틀려도 green이다. 파일을 실제로 만드는 쪽에서 유도한다.
+    """
+
+    match = _STDERR_SIBLING.search(_SUPERVISOR.read_text(encoding="utf-8"))
+    assert match is not None, (
+        "supervisor의 helper stderr sibling 기록을 찾지 못했다 — 이름 규칙이 바뀌었으면 "
+        "evidence 파일 집합 계약도 함께 다시 판단하라."
+    )
+    return match.group("suffix")
+
+
+def _validator_expected_names() -> list[set[str]]:
+    """검증기가 요구하는 파일 집합 둘(normal, recovery)을 소스에서 읽는다.
+
+    `+ _HELPER_STDERR_SUFFIX`로 이어 붙인 항목은 리터럴에 접미사가 없으므로 여기서
+    다시 붙인다 — 검증기가 상수를 쓰는 것과 같은 규칙이다.
+    """
+
+    source = _state_source()
+    suffix = re.search(
+        r'_HELPER_STDERR_SUFFIX:\s*Final\[str\]\s*=\s*"(?P<value>[^"]+)"', source
+    )
+    assert suffix is not None, "`_HELPER_STDERR_SUFFIX` 상수를 찾지 못했다"
+    sets: list[set[str]] = []
+    for match in _EXPECTED_BLOCK.finditer(source):
+        names: set[str] = set()
+        for line in match.group("body").splitlines():
+            entry = _EXPECTED_ENTRY.search(line)
+            if entry is None:
+                continue
+            name = entry.group("name")
+            if "_HELPER_STDERR_SUFFIX" in line:
+                name += suffix.group("value")
+            names.add(name)
+        sets.append(names)
+    return sets
+
+
+def _runner_produced_names() -> set[str]:
+    """정상 실행이 `$RUNTIME_DIR` 최상위에 남기는 이름을 호출부에서 유도한다.
+
+    helper 출력은 supervisor가 stderr sibling을 **무조건** 함께 쓴다(2026-09-05에
+    그것이 없어서 helper 실패 원인이 0바이트로 사라졌다). executor는 아티팩트
+    디렉터리를, probe는 파일 하나를 남긴다. 여기에 `lifecycle`이 더해진다.
+    """
+
+    source = _runner_source()
+    suffix = _supervisor_stderr_suffix()
+    names = {"lifecycle"}
+    for match in _HELPER_OUTPUT.finditer(source):
+        names.add(match.group("name"))
+        names.add(match.group("name") + suffix)
+    names |= {match.group("name") for match in _EXECUTOR_OUTPUT.finditer(source)}
+    names |= {match.group("name") for match in _PROBE_OUTPUT.finditer(source)}
+    return names
+
+
+def test_the_evidence_file_set_matches_what_the_runner_produces() -> None:
+    """검증기의 normal 파일 집합이 호출부 유도와 **정확히** 같아야 한다.
+
+    이 대조가 없어서 값을 크게 치렀다. `.stderr` 셋과 `executor.log`가 계약에서 빠져
+    있었고, 그 사실은 **스펙이 통과한 뒤에야** 도는 `_validate_evidence`에서만 드러난다.
+    즉 배포 스택 실행 한 번을 통째로 치르고서야 파일 이름 하나를 알게 된다.
+    """
+
+    produced = _runner_produced_names()
+    assert len(produced) >= 8, f"호출부에서 산출물 이름을 {len(produced)}개만 유도했다"
+    sets = _validator_expected_names()
+    assert len(sets) == 2, f"검증기의 파일 집합을 {len(sets)}개 읽었다 — 둘이어야 한다"
+    normal, recovery = sets
+    assert normal == produced, (
+        f"검증기의 normal 파일 집합과 호출부 유도가 다르다.\n"
+        f"  검증기에만: {sorted(normal - produced)}\n"
+        f"  호출부에만: {sorted(produced - normal)}\n"
+        "이 불일치는 스펙이 통과한 뒤 evidence 검증에서만 드러난다 — 배포 스택 실행 "
+        "한 번을 치르고 나서야 알게 된다. 여기서 맞춰라."
+    )
+    assert recovery < normal, (
+        f"recovery 파일 집합이 normal의 진부분집합이 아니다: {sorted(recovery - normal)}. "
+        "recovery는 seed와 probe를 하지 않으므로 더 적어야 한다."
+    )
+
+
+def test_the_validator_requires_every_declared_operation() -> None:
+    """검증기의 normal `required_operations`가 선언과 같아야 한다.
+
+    lifecycle 파일 이름이 그 집합에서 만들어지고 실제 디렉터리와 exact 대조된다.
+    선언에 operation을 더하고 여기를 안 고치면 lane은 **evidence 단계에서** 죽는다 —
+    또 한 번의 배포 스택 실행이다.
+    """
+
+    match = re.search(
+        r"required_operations = \{(?P<body>[^}]*)\}", _state_source(), re.DOTALL
+    )
+    assert match is not None, "검증기의 `required_operations`를 찾지 못했다"
+    required = set(_EXPECTED_ENTRY.findall(match.group("body")))
+    declared = set(_declared_operations())
+    assert required == declared, (
+        f"검증기의 normal `required_operations`와 러너 선언이 다르다.\n"
+        f"  검증기에만: {sorted(required - declared)}\n"
+        f"  선언에만: {sorted(declared - required)}"
+    )
