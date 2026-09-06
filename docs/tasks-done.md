@@ -10,6 +10,36 @@
 > | 2026-07-27 ~ 2026-07-31 | [archive/tasks-done-2026-07a.md](archive/tasks-done-2026-07a.md) |
 > | ~ 2026-07-26 (C7·Admin) | [archive/tasks-done-2026-07b.md](archive/tasks-done-2026-07b.md) |
 
+## T-VN-41F1D-E — 구 generation 퇴역·v6/v8 attestation 전환 (2026-09-06 완료)
+
+- [x] T-VN-41F1D-E — 저장소측은 2026-08-25에 끝났고, 남았다고 적힌 "n150 data-dependent
+  실행"은 **D2가 pinset `48166bd2`에서 이미 수행했다**(2026-09-06).
+
+  | 요구 | 결과 |
+  |---|---|
+  | 두 러너의 v4 `E2E_C7_COMPATIBLE_PAIR_MANIFEST` 제거 | 완료. 저장소 전체에서 그 이름은 **부재를 단언하는 테스트 한 줄**로만 남는다(`tests/unit/test_admin_feature_live_acceptance.py`) |
+  | v6 manifest + v8 journal 요구 | `run-c7-prod-live-e2e.sh`와 `run-admin-feature-live-acceptance.sh`가 `E2E_C7_PINNED_RUNTIME_MANIFEST`·`E2E_C7_REBUILD_JOURNAL`을 `require_env`로 요구 |
+  | v4/v5/v7 억지 입력 compatibility 경로 부재 | 러너 계약 테스트가 단언 |
+  | **n150 data-dependent 실행** | D2 lane이 snapshot의 `c7_prod_attestation.py`를 `validate-c7-module`로 봉인 확인한 뒤 v6 manifest·v8 journal·host attestation을 넘겨 검증하고, 세 해시를 `result.json`에 남긴다 — `pinned_runtime_manifest_sha256 6ed900f5…`, `rebuild_journal_sha256 4cf269c4…`, `host_attestation_sha256 5b7f91ea…`. lane은 `phase: passed`로 닫혔다 |
+  | 구 generation 퇴역 | v4/v5/v7 **포맷**이 `/etc/kor-travel-map/retired-de5206dc/`로 퇴역했다(`c7-compatible-pair-v4.json`, `…-v5-pr197.json`, `…-v7-pr197.json`) |
+
+  **검증기가 대조하는 축**이 해제 조건의 열거와 일치한다 — generation shape·image·source
+  revision·schema head·pinset·candidate evidence(digest/git tree/PostgreSQL image), journal의
+  Dagster metadata identity·role·privilege·membership·owner, PinVi DB identity·owner,
+  operation plan/identity/digest/generation, application execution evidence.
+
+  **수행하지 않은 것과 그 이유.** `run-c7-prod-live-e2e.sh`(6-spec C7 prod gate)는 v6/v8
+  전환 이후 돈 적이 없다(증거 디렉터리 최종 기록 2026-08-23). 그 러너의 운영 순서를 정의하는
+  `docs/runbooks/c7-prod-live-e2e.md`가 스스로 **`[보존 이력 · 실행 금지]`**이고 "300
+  baseline의 n150 배포에는 사용하지 않는다"고 적는다. 즉 이 축은 `T-VN-M01`의 restore 축과
+  같은 계열 — **수행 가능한 형태가 아니다.** 되살릴 조건도 같다: 300 baseline에 맞는 C7 prod
+  gate 운영 순서가 생기면 그때 다시 세운다. 그 전까지 v6/v8 전환의 live 증거는 D2 lane의
+  매 실행이 낸다.
+
+  **남은 것(퇴역 아님).** `/etc/kor-travel-map/`의 v6/v8 pinset 쌍 여섯은 **같은 포맷의
+  이력**이고 활성은 `48166bd2`다. repin 주기마다 한 쌍이 생기는 설계이므로 이력 보존이
+  정상이며, 롤백 입력이라 지우지 않는다.
+
 ## T-VN-M01 — admin Feature 생성 API clean cutover (2026-09-06 완료)
 
 - [x] T-VN-M01 — 활성화 전제 셋이 전부 닫혔고 route가 live다.

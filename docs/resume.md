@@ -16,16 +16,24 @@
 
 ### 다음 한 작업
 
-**`T-VN-41F1D-E`** — 구 generation 퇴역·v6/v8 attestation 전환. 해제 조건이 "저장소측은
-2026-08-25 완료, 남은 것은 F1D-D 순서를 따르는 n150 data-dependent 실행뿐"이라 적는데,
-**그 실행은 D1(11 passed)과 D2(passed)가 pinset `48166bd2`에서 이미 했다.** 남은 구체
-작업은 호스트측 퇴역이다 — `/etc/kor-travel-map/`에 v6/v8 세대가 **여섯 쌍** 있고 퇴역된
-것은 `de5206dc` 하나뿐이다. 활성은 `48166bd2`이고 나머지 다섯(`05b6f442`·`54b8efd0`·
-`af6d7061`·`c6633015`·`e6b52db4`)이 superseded다.
+**`T-VN-41C`의 구조적 순환에 대한 소유자 판정.** 선행 배리어는 전부 닫혔다 — D1·D2·
+`T-VN-41F1D-E`·`T-VN-M01` 완료. 41C의 relay·reconciliation은 **구현이 끝나 있다**(2026-09-06
+재조사가 종전 서술을 정정했다). 남은 셋 중 앞의 둘은 셋째가 풀리기 전에는 착수할 수 없다:
 
-`T-VN-41C`는 그 뒤다. 2026-09-06 재조사가 41C 서술을 정정했다 — reconciliation은
-**구현이 끝나 있고**, 남은 것은 런타임 결선·enable 경계 구현·구조적 순환(소유자 판정)
-셋이다. `docs/tasks.md`의 줄이 정본이다.
+1. **런타임 결선** — 배포 Map 컨테이너에 `..._CACHE_TARGET_SERVICE_PRINCIPALS`가 없어 service
+   표면이 401이고 relay 관계 19개가 전부 0행이다.
+2. **enable 경계 구현** — PinVi가 production에서 sync enable을 거부하며, 그 조문이 기다리는
+   "root-owned final C7 enable boundary"가 Manager에 없다.
+3. **구조적 순환** — 켜면 `environment_sha256`이 바뀌어 rebuild가 필요한데, Manager
+   `require_rebuildable_mode`는 cache-target 값이 inert여야 rebuild를 허용한다. **현
+   lifecycle(rehearsal/rebuildable)에서 enable과 pinned rebuild는 상호배타다.**
+
+셋 중 하나를 골라야 한다 — (a) lifecycle을 옮긴다, (b) Manager가 cache-target 축을
+`environment_sha256` 결박에서 분리한다, (c) enable을 실 production 전환 시점까지 미룬다.
+(a)는 rebuild 능력을 잃고, (b)는 Manager 계약 변경이며, (c)는 41C를 그때까지 여는 것이다.
+`docs/tasks.md`의 41C 줄과 `tasks-acceptance.md` §T-VN-41C가 정본이다.
+
+`GM-17`은 소유자 지시로 **가장 마지막**이다.
 
 그 뒤 순서는 **`T-VN-41F1D-E` → `T-VN-41C`**다(2026-09-06 정정 — 이 줄이 순서를 뒤집어
 적고 있었다). `GM-17`은 소유자 지시로 **가장 마지막**이다.
