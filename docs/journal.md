@@ -1,5 +1,67 @@
 # journal.md — 작업 일지 (역시간순)
 
+## 2026-09-06 — M01을 활성화했고, D2는 스펙이 아니라 **증거 계약**에서 열두 번 걸렸다
+
+`T-VN-41F1D-D2`가 오래 진전이 없던 이유를 근본에서 보면 두 겹이었다.
+
+### 1. 바깥 겹 — 해제 조건에 없던 의존
+
+D2 스펙의 첫 write가 `POST /v1/admin/features`인데 배포 API가
+`KOR_TRAVEL_MAP_API_ADMIN_MANUAL_FEATURE_CREATE_ENABLED=false`로 `MANUAL_FEATURE_CREATE_NOT_READY`
+503을 냈다. 즉 D2는 `T-VN-M01` **활성화**에 의존하는데 원장의 어느 줄도 그렇게 적지
+않았다. 2026-09-05 실행이 그것을 값으로 드러냈다.
+
+M01의 활성화 전제 셋 중 restore 축은 **수행 가능한 형태가 아니었다** — 설계(2026-08-19)
+이후의 300 baseline 결정이 `docker-restore*.sh` 셋을 본문 없이 종료하게 만들었기 때문이다
+(`restore is disabled: backup artifacts are audit-only under the 300 baseline`). 소유자가
+"300 baseline이 대체한 것으로 보고 활성화"로 판정했고, 나머지 두 축을 측정으로 닫았다:
+
+    ACL 축     scripts/m01_activation_preflight.py  55/55, 활성화 rebuild 앞뒤로 두 번
+    거부 축    scripts/m01_activation_live_gate.py  잘못된 자격 조합 넷 전부 403
+    zero-write 같은 스크립트가 witness 8관계 count 대조 — 증분 0
+    성공 축    POST /v1/admin/features → 201 (플래그가 켜져야 관측 가능하다던 그것)
+
+플래그는 `2026-09-05T20:27:59Z`에 `true`가 됐다(백업
+`.env.bak-pre-m01-activation-20260905T202759Z`). `.env`가 바뀌면 `environment_sha256`이
+바뀌므로 rebuild가 따라왔고, 그래서 ACL 축을 rebuild 뒤에 한 번 더 측정했다 — §8.2가
+"restore 뒤 동일"을 요구하기 때문이다.
+
+### 2. 안쪽 겹 — 스펙은 통과하는데 lane이 실패했다
+
+활성화 뒤 D2는 **스펙 자체를 통과했다**(main·recovery 각
+`{"counts":{"passed":2},"result":"passed"}`). 그런데도 lane은 실패했다. 이후의 결함은
+전부 증거 계약 쪽이었고, 하나를 고치면 다음 하나가 드러났다. `_validate_evidence`가
+**정확한 파일명 집합**과 action별 추가 키를 요구하는데 그 검증은 **스펙이 통과한 뒤에야**
+돈다. 그래서 결함이 병렬로 보이지 않고 직렬로만 드러난다 — 배포 스택 실행 한 번에
+하나씩. 열둘을 그렇게 지났다:
+
+    seed FK 계약 → preflight role escalation → helper SQL 컬럼 → await 우선순위 →
+    executor 격리 가드 → M01 kill-switch → create body state 축 → 201을 실패로 읽던 헬퍼 →
+    seed FK 기대값 → .stderr 파일 집합 → executor.log 파일 집합 → summary_run_ids 키
+
+**여기서 배울 것.** 직렬 노출 자체는 검증기의 결함이 아니다(증거는 실행이 끝나야
+존재한다). 결함은 그 직렬 비용을 아무도 세지 않은 것이다. 열두 번의 배포 스택 실행이
+필요했다는 사실이 "게이트를 로컬에서 유도해 미리 깨뜨려라"는 요구를 값으로 만든다.
+그래서 열두 결함마다 `tests/lint/`에 탐지기를 남겼다 — 각각 유도 → 결박 → 탐지
+(`AGENTS.md` DO NOT 15)이고, 전부 변이로 red를 확인했다.
+
+### 3. 그 탐지기들도 적대 리뷰에 부쳤다
+
+5개 축·74 에이전트가 68건을 냈고 34건이 확인됐다. 게이트 품질 쪽에서 **실제 과허용
+둘**이 실측됐다:
+
+- create body 게이트가 모델 필드를 `\nclass X(`부터 다음 `\nclass `까지 텍스트로 잘라
+  긁었다. 두 클래스 사이의 **모듈 수준 함수 본문까지** 쓸어 담아 `try`가 "모델 필드"로
+  잡혔다. 스펙이 그런 이름을 보내도 green이었다. → AST로 클래스 본문의 `AnnAssign`만
+  세고, base 이름을 리터럴로 박는 대신 `class X(Base)`를 따라간다.
+- executor env 게이트가 요구 env를 가드 **한 함수** 본문에서만 유도했다. 요구가 헬퍼로
+  빠지면 유도 집합이 조용히 줄고 `missing == []`이 공허해진다. → 가드가 부르는 같은
+  모듈 함수를 따라가 본문을 합친다.
+
+자기검사도 동어반복("필드가 있다")에서 전제 확인(모델 계열이 실제로 `extra="forbid"`인가)
+으로 바꿨다. 전제가 무너지면 이 대조 전체가 의미를 잃으므로 red로 알려야 한다.
+
+
 ## 2026-09-05 — 새 DB가 helper의 미결박 가정 셋을 한꺼번에 드러냈다
 
 `af6d7061`로 rebuild한 뒤 D1은 통과했고 D2는 seed에서 9.8초 만에 죽었다. 원인은 셋이고
